@@ -12,6 +12,9 @@ ifneq (,$(wildcard .env))
   export
 endif
 
+OPENCODE_CONFIG ?= .opencode/opencode.json
+export OPENCODE_CONFIG
+
 .PHONY: install start start-clean save agent ask stop \
         _check-deps _install-tmux-plugins _install-uv _install-glab \
         _install-opencode _install-semgrep
