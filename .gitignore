@@ -1,6 +1,9 @@
 # Sub-projects managed separately
 GitLab/
 
+# Local OpenCode config and state
+.opencode/
+
 
 # Secrets
 .env
