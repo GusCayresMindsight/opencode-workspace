@@ -1,0 +1,15 @@
+# Sub-projects managed separately
+GitLab/
+
+# Task directories with potentially sensitive data
+task-1/
+
+# Secrets
+.env
+
+# Node dependencies
+.opencode/node_modules/
+
+# OS noise
+.DS_Store
+Thumbs.db

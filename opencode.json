@@ -1,0 +1,36 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "notion": {
+      "type": "local",
+      "command": ["npx", "-y", "@notionhq/notion-mcp-server"],
+      "environment": {
+        "OPENAPI_MCP_HEADERS": "{\"Authorization\":\"Bearer {env:NOTION_TOKEN}\",\"Notion-Version\":\"2022-06-28\"}"
+      }
+    },
+    "gitlab": {
+      "type": "local",
+      "command": ["glab", "mcp", "serve"]
+    },
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "@playwright/mcp@latest"]
+    },
+    "fetch": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-fetch"]
+    },
+    "semgrep": {
+      "type": "local",
+      "command": ["semgrep", "mcp"]
+    },
+    "aws-knowledge": {
+      "type": "remote",
+      "url": "https://knowledge-mcp.global.api.aws"
+    },
+    "sequential-thinking": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]
+    }
+  }
+}
