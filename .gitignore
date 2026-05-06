@@ -1,8 +1,6 @@
 # Sub-projects managed separately
 GitLab/
 
-# Task directories with potentially sensitive data
-task-1/
 
 # Secrets
 .env
