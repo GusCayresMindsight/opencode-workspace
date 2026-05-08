@@ -1,11 +1,15 @@
 # Usage:
-#   make install         — install all dependencies (no sudo required)
-#   make start           — check deps, then start or attach (restores last saved state)
-#   make start-clean     — check deps, then start a fresh session (no restore)
-#   make save            — save current session state now
-#   make agent           — spawn an interactive opencode agent in a new pane
-#   make ask p="prompt"  — spawn an opencode agent with a prompt in a new pane
-#   make stop            — save state and kill the session
+#   make install              — install all dependencies (no sudo required)
+#   make start                — check deps, then start or attach (restores last saved state)
+#   make start-clean          — check deps, then start a fresh session (no restore)
+#   make save                 — save current session state now
+#   make agent                — spawn an interactive opencode agent in a new pane
+#   make agent d="path"       — spawn an interactive opencode agent in the given directory
+#   make ask p="prompt"       — spawn an opencode agent with a prompt in a new pane
+#   make ask p="prompt" d="path" — spawn an opencode agent with a prompt in the given directory
+#   make term                 — spawn a plain terminal pane in the current directory
+#   make term d="path"        — spawn a plain terminal pane in the given directory
+#   make stop                 — save state and kill the session
 
 ifneq (,$(wildcard .env))
   include .env
@@ -15,7 +19,7 @@ endif
 OPENCODE_CONFIG ?= .opencode/opencode.json
 export OPENCODE_CONFIG
 
-.PHONY: install start start-clean save agent ask stop \
+.PHONY: install start start-clean save agent ask term stop \
         _check-deps _install-tmux-plugins _install-uv _install-glab \
         _install-opencode _install-semgrep
 
@@ -135,12 +139,16 @@ stop:
 # ─── Agent panes ─────────────────────────────────────────────────────────────
 
 agent:
-	tmux split-window -c "$(CURDIR)" "bash -c 'set -a; . .env 2>/dev/null; set +a; opencode'"
+	tmux split-window -c "$(if $(d),$(d),$(CURDIR))" "bash -c 'set -a; . .env 2>/dev/null; set +a; opencode'"
 	tmux select-layout main-vertical
 
 ask:
 ifndef p
 	$(error Usage: make ask p="your prompt here")
 endif
-	tmux split-window -c "$(CURDIR)" "bash -c 'set -a; . .env 2>/dev/null; set +a; opencode --prompt \"$(p)\"'"
+	tmux split-window -c "$(if $(d),$(d),$(CURDIR))" "bash -c 'set -a; . .env 2>/dev/null; set +a; opencode --prompt \"$(p)\"'"
+	tmux select-layout main-vertical
+
+term:
+	tmux split-window -c "$(if $(d),$(d),$(CURDIR))"
 	tmux select-layout main-vertical

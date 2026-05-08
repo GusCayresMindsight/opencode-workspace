@@ -1,6 +1,6 @@
 # Sub-projects managed separately
-GitLab/
-
+# opencode:allow
+workspaces/
 # Local OpenCode config and state
 .opencode/
 
