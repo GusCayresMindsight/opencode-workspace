@@ -16,7 +16,7 @@ ifneq (,$(wildcard .env))
   export
 endif
 
-OPENCODE_CONFIG ?= .opencode/opencode.json
+OPENCODE_CONFIG ?= $(abspath .opencode/opencode.json)
 export OPENCODE_CONFIG
 
 .PHONY: install start start-clean save agent ask term stop \
@@ -139,14 +139,14 @@ stop:
 # ─── Agent panes ─────────────────────────────────────────────────────────────
 
 agent:
-	tmux split-window -c "$(if $(d),$(d),$(CURDIR))" "bash -c 'set -a; . .env 2>/dev/null; set +a; opencode'"
+	tmux split-window -d -c "$(if $(d),$(d),$(CURDIR))" "bash -c 'set -a; . $(CURDIR)/.env 2>/dev/null; set +a; opencode'"
 	tmux select-layout main-vertical
 
 ask:
 ifndef p
 	$(error Usage: make ask p="your prompt here")
 endif
-	tmux split-window -c "$(if $(d),$(d),$(CURDIR))" "bash -c 'set -a; . .env 2>/dev/null; set +a; opencode --prompt \"$(p)\"'"
+	tmux split-window -d -c "$(if $(d),$(d),$(CURDIR))" "bash -c 'set -a; . $(CURDIR)/.env 2>/dev/null; set +a; opencode --prompt \"$(p)\"'"
 	tmux select-layout main-vertical
 
 term:
