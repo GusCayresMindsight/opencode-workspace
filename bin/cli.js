@@ -43,6 +43,28 @@ function run(args, opts = {}) {
   return result;
 }
 
+// Like run(), but throws instead of exiting — used inside tryStep
+function runOrThrow(args, opts = {}) {
+  const result = spawnSync(args[0], args.slice(1), {
+    stdio: 'inherit',
+    env: process.env,
+    ...opts,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${args[0]} exited with code ${result.status}`);
+  return result;
+}
+
+// Wraps an install step so a failure warns and continues rather than aborting
+function tryStep(label, fn) {
+  try {
+    fn();
+  } catch (e) {
+    console.warn(`  WARNING: ${label} failed — ${e.message}`);
+    console.warn('  Re-run: opencode-workspace install');
+  }
+}
+
 function capture(args) {
   const result = spawnSync(args[0], args.slice(1), {
     stdio: 'pipe',
@@ -90,8 +112,8 @@ function cmdInstall() {
   // tmux-resurrect
   if (!fs.existsSync(RESURRECT_DIR)) {
     console.log('Installing tmux-resurrect...');
-    run(['git', 'clone', '--depth', '1',
-      'https://github.com/tmux-plugins/tmux-resurrect', RESURRECT_DIR]);
+    tryStep('tmux-resurrect', () => runOrThrow(['git', 'clone', '--depth', '1',
+      'https://github.com/tmux-plugins/tmux-resurrect', RESURRECT_DIR]));
   } else {
     console.log('tmux-resurrect already installed');
   }
@@ -99,8 +121,8 @@ function cmdInstall() {
   // tmux-continuum
   if (!fs.existsSync(CONTINUUM_DIR)) {
     console.log('Installing tmux-continuum...');
-    run(['git', 'clone', '--depth', '1',
-      'https://github.com/tmux-plugins/tmux-continuum', CONTINUUM_DIR]);
+    tryStep('tmux-continuum', () => runOrThrow(['git', 'clone', '--depth', '1',
+      'https://github.com/tmux-plugins/tmux-continuum', CONTINUUM_DIR]));
   } else {
     console.log('tmux-continuum already installed');
   }
@@ -108,7 +130,7 @@ function cmdInstall() {
   // uv
   if (!cmdExists('uv')) {
     console.log('Installing uv...');
-    run(['bash', '-c', 'curl -LsSf https://astral.sh/uv/install.sh | sh']);
+    tryStep('uv', () => runOrThrow(['bash', '-c', 'curl -LsSf https://astral.sh/uv/install.sh | sh']));
   } else {
     console.log(`uv already installed: ${capture(['uv', '--version'])}`);
   }
@@ -116,14 +138,14 @@ function cmdInstall() {
   // glab
   if (!cmdExists('glab')) {
     console.log('Installing glab...');
-    run(['bash', '-c', [
+    tryStep('glab', () => runOrThrow(['bash', '-c', [
       'GLAB_VER=$(curl -s https://api.github.com/repos/gitlab-org/cli/releases/latest',
       '  | grep -oP \'"tag_name": "\\K[^"]+\')',
       'curl -sL "https://gitlab.com/gitlab-org/cli/-/releases/${GLAB_VER}/downloads/glab_linux_amd64.tar.gz"',
       '  | tar -xz -C /tmp',
       'mkdir -p ~/.local/bin',
       'cp /tmp/bin/glab ~/.local/bin/glab',
-    ].join(' && ')]);
+    ].join(' && ')]));
   } else {
     console.log(`glab already installed: ${capture(['bash', '-c', 'glab --version 2>&1 | head -1'])}`);
   }
@@ -131,7 +153,7 @@ function cmdInstall() {
   // opencode
   if (!cmdExists('opencode')) {
     console.log('Installing opencode...');
-    run(['bash', '-c', 'curl -fsSL https://opencode.ai/install | bash']);
+    tryStep('opencode', () => runOrThrow(['bash', '-c', 'curl -fsSL https://opencode.ai/install | bash']));
   } else {
     console.log(`opencode already installed: ${capture(['bash', '-c', 'opencode --version 2>&1 | head -1'])}`);
   }
@@ -139,13 +161,13 @@ function cmdInstall() {
   // semgrep
   if (!cmdExists('semgrep')) {
     console.log('Installing semgrep...');
-    run(['uv', 'tool', 'install', 'semgrep']);
+    tryStep('semgrep', () => runOrThrow(['uv', 'tool', 'install', 'semgrep']));
   } else {
     console.log(`semgrep already installed: ${capture(['semgrep', '--version'])}`);
   }
 
   console.log('');
-  console.log("All dependencies installed. Run: opencode-workspace start");
+  console.log('All dependencies installed. Run: opencode-workspace start');
 }
 
 function checkDeps() {
