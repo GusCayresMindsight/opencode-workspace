@@ -30,7 +30,7 @@ RESURRECT_DIR     := $(PLUGINS_DIR)/tmux-resurrect
 CONTINUUM_DIR     := $(PLUGINS_DIR)/tmux-continuum
 RESURRECT_SAVE    := $(RESURRECT_DIR)/scripts/save.sh
 RESURRECT_RESTORE := $(RESURRECT_DIR)/scripts/restore.sh
-TMUX_CONF         := $(CURDIR)/.tmux.conf
+TMUX_CONF         := $(CURDIR)/lib/tmux.conf
 
 # ─── Dependency installation (no sudo required) ───────────────────────────────
 
