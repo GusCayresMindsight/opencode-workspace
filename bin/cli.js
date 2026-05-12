@@ -197,7 +197,7 @@ switch (command) {
   case 'ask':     cmdAsk(rest.find(a => !a.startsWith('-'))); break;
   case 'term':    cmdTerm(); break;
   default:
-    console.error(`Unknown command: ${command}`);
-    printHelp();
+    process.stderr.write(`Unknown command: ${command}\n`);
+    process.stderr.write(`Run 'opencode-workspace --help' for usage.\n`);
     process.exit(1);
 }
