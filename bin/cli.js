@@ -8,18 +8,10 @@ const os = require('os');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SESSION    = 'opencode';
-const TMUX_CONF  = path.join(__dirname, '..', 'lib', 'tmux.conf');
 const TEMPLATE   = path.join(__dirname, '..', 'lib', 'opencode.json.template');
 const HOME       = os.homedir();
 const GLOBAL_CFG = path.join(HOME, '.config', 'opencode', 'opencode.json');
 const CWD        = process.cwd();
-
-const PLUGINS_DIR      = path.join(HOME, '.tmux', 'plugins');
-const RESURRECT_DIR    = path.join(PLUGINS_DIR, 'tmux-resurrect');
-const CONTINUUM_DIR    = path.join(PLUGINS_DIR, 'tmux-continuum');
-const RESURRECT_SAVE   = path.join(RESURRECT_DIR, 'scripts', 'save.sh');
-const RESURRECT_RESTORE= path.join(RESURRECT_DIR, 'scripts', 'restore.sh');
 
 // Augment PATH so installed tools are always found
 process.env.PATH = [
@@ -79,13 +71,11 @@ function cmdExists(name) {
   return capture(['which', name]) !== null;
 }
 
-function sessionExists() {
-  const r = spawnSync('tmux', ['has-session', '-t', SESSION], { stdio: 'pipe' });
-  return r.status === 0;
-}
-
-function sleep500() {
-  spawnSync('sleep', ['0.5']);
+function requireTmux() {
+  if (!process.env.TMUX) {
+    console.error('Not inside a tmux session. Start tmux first.');
+    process.exit(1);
+  }
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -109,24 +99,6 @@ function cmdInit(force) {
 }
 
 function cmdInstall() {
-  // tmux-resurrect
-  if (!fs.existsSync(RESURRECT_DIR)) {
-    console.log('Installing tmux-resurrect...');
-    tryStep('tmux-resurrect', () => runOrThrow(['git', 'clone', '--depth', '1',
-      'https://github.com/tmux-plugins/tmux-resurrect', RESURRECT_DIR]));
-  } else {
-    console.log('tmux-resurrect already installed');
-  }
-
-  // tmux-continuum
-  if (!fs.existsSync(CONTINUUM_DIR)) {
-    console.log('Installing tmux-continuum...');
-    tryStep('tmux-continuum', () => runOrThrow(['git', 'clone', '--depth', '1',
-      'https://github.com/tmux-plugins/tmux-continuum', CONTINUUM_DIR]));
-  } else {
-    console.log('tmux-continuum already installed');
-  }
-
   // uv
   if (!cmdExists('uv')) {
     console.log('Installing uv...');
@@ -167,67 +139,12 @@ function cmdInstall() {
   }
 
   console.log('');
-  console.log('All dependencies installed. Run: opencode-workspace start');
-}
-
-function checkDeps() {
-  const missing = [];
-  for (const dep of ['tmux', 'node', 'npx', 'uv', 'uvx', 'glab', 'semgrep', 'opencode']) {
-    if (!cmdExists(dep)) missing.push(dep);
-  }
-  if (!fs.existsSync(RESURRECT_DIR)) missing.push('tmux-resurrect');
-  if (!fs.existsSync(CONTINUUM_DIR)) missing.push('tmux-continuum');
-
-  if (missing.length > 0) {
-    console.error(`ERROR: missing dependencies: ${missing.join(' ')}`);
-    console.error("Run 'opencode-workspace install' to install them.");
-    process.exit(1);
-  }
-}
-
-function cmdStart(clean) {
-  checkDeps();
-
-  if (clean) {
-    spawnSync('tmux', ['kill-session', '-t', SESSION], { stdio: 'pipe' });
-    run(['tmux', '-f', TMUX_CONF, 'new-session', '-s', SESSION]);
-    return;
-  }
-
-  if (sessionExists()) {
-    run(['tmux', 'attach-session', '-t', SESSION]);
-  } else {
-    run(['tmux', '-f', TMUX_CONF, 'new-session', '-d', '-s', SESSION]);
-    if (fs.existsSync(RESURRECT_RESTORE)) {
-      run(['tmux', 'run-shell', RESURRECT_RESTORE]);
-      sleep500();
-    }
-    run(['tmux', 'attach-session', '-t', SESSION]);
-  }
-}
-
-function cmdSave() {
-  if (!fs.existsSync(RESURRECT_SAVE)) {
-    console.error('tmux-resurrect not installed. Run: opencode-workspace install');
-    process.exit(1);
-  }
-  run(['bash', RESURRECT_SAVE]);
-  console.log('State saved.');
-}
-
-function cmdStop() {
-  if (fs.existsSync(RESURRECT_SAVE)) {
-    console.log('Saving state...');
-    run(['bash', RESURRECT_SAVE]);
-    sleep500();
-  }
-  run(['tmux', 'kill-session', '-t', SESSION]);
+  console.log('All dependencies installed.');
 }
 
 function cmdAgent() {
-  run(['tmux', 'split-window', '-d', '-c', CWD,
-    `bash -c 'opencode'`]);
-  run(['tmux', 'select-layout', 'main-vertical']);
+  requireTmux();
+  run(['tmux', 'split-window', '-h', '-c', CWD, "bash -c 'opencode'"]);
 }
 
 function cmdAsk(prompt) {
@@ -235,35 +152,30 @@ function cmdAsk(prompt) {
     console.error('Usage: opencode-workspace ask "your prompt here"');
     process.exit(1);
   }
-  // Escape single quotes in the prompt for safe embedding in a single-quoted bash string
+  requireTmux();
   const safe = prompt.replace(/'/g, "'\\''");
-  run(['tmux', 'split-window', '-d', '-c', CWD,
+  run(['tmux', 'split-window', '-h', '-c', CWD,
     `bash -c 'opencode --prompt '"'"'${safe}'"'"''`]);
-  run(['tmux', 'select-layout', 'main-vertical']);
 }
 
 function cmdTerm() {
-  run(['tmux', 'split-window', '-c', CWD]);
-  run(['tmux', 'select-layout', 'main-vertical']);
+  requireTmux();
+  run(['tmux', 'split-window', '-h', '-c', CWD]);
 }
 
 function printHelp() {
   console.log(`
-@gus/opencode-workspace — tmux workspace for OpenCode agents
+@gus/opencode-workspace — spawn OpenCode agent panes from any directory
 
 Usage: opencode-workspace <command> [options]
 
 Commands:
   init [--force]    Write ~/.config/opencode/opencode.json from the bundled template.
                     Does nothing if the file already exists (use --force to overwrite).
-  install           Install all dependencies: tmux plugins, uv, glab, opencode, semgrep.
-  start             Check deps, then attach to or create the opencode tmux session.
-  start-clean       Kill any existing session and start a fresh one.
-  save              Save current session state (tmux-resurrect).
-  stop              Save state and kill the session.
-  agent             Split a new pane in the current directory and run opencode.
-  ask "<prompt>"    Split a new pane in the current directory and run opencode with a prompt.
-  term              Split a new plain terminal pane in the current directory.
+  install           Install dependencies: uv, glab, opencode, semgrep.
+  agent             Split a pane to the right in the current directory and run opencode.
+  ask "<prompt>"    Split a pane to the right and run opencode with a prompt.
+  term              Split a pane to the right as a plain terminal.
 `);
 }
 
@@ -279,15 +191,11 @@ if (!command || command === '--help' || command === '-h') {
 const force = rest.includes('--force');
 
 switch (command) {
-  case 'init':        cmdInit(force); break;
-  case 'install':     cmdInstall(); break;
-  case 'start':       cmdStart(false); break;
-  case 'start-clean': cmdStart(true); break;
-  case 'save':        cmdSave(); break;
-  case 'stop':        cmdStop(); break;
-  case 'agent':       cmdAgent(); break;
-  case 'ask':         cmdAsk(rest.find(a => !a.startsWith('-'))); break;
-  case 'term':        cmdTerm(); break;
+  case 'init':    cmdInit(force); break;
+  case 'install': cmdInstall(); break;
+  case 'agent':   cmdAgent(); break;
+  case 'ask':     cmdAsk(rest.find(a => !a.startsWith('-'))); break;
+  case 'term':    cmdTerm(); break;
   default:
     console.error(`Unknown command: ${command}`);
     printHelp();
