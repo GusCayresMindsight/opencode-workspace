@@ -13,12 +13,9 @@ npm install -g @gus/opencode-workspace
 ## Setup (first time)
 
 ```bash
-# Write ~/.config/opencode/opencode.json with all MCP servers pre-configured
-opencode-workspace init
-
-# Add your API keys to ~/.bashrc or ~/.zshrc
-export NOTION_TOKEN=...
-export GITHUB_TOKEN=...
+# Add your API keys via the mcp env command (stored securely)
+opencode-workspace mcp env NOTION_TOKEN
+opencode-workspace mcp env GITHUB_TOKEN
 ```
 
 ## Usage
@@ -34,14 +31,14 @@ opencode-workspace term             # split pane to the right, plain terminal
 | Command | Description |
 |---|---|
 | `opencode-workspace` (default) | Launch the OpenCode agent. Auto-creates a tmux session if needed. |
-| `opencode-workspace init [--force]` | Write `~/.config/opencode/opencode.json` from the bundled template. Does nothing if the file already exists (`--force` to overwrite). |
 | `opencode-workspace install` | Install dependencies: uv, glab, opencode, semgrep. |
 | `opencode-workspace agent` | Split a pane to the right in the current directory and run opencode. |
 | `opencode-workspace term` | Split a pane to the right as a plain terminal. |
+| `opencode-workspace mcp env VAR_NAME` | Prompt for a secret and store it in `~/.local/share/opencode/mcp.env`. |
 
 ## MCP servers included
 
-The `init` template configures these MCP servers out of the box:
+The bundled template configures these MCP servers out of the box:
 
 | Server | Description |
 |---|---|

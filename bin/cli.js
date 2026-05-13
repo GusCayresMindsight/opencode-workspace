@@ -11,7 +11,6 @@ const readline = require('readline');
 
 const TEMPLATE   = path.join(__dirname, '..', 'lib', 'opencode.json.template');
 const HOME       = os.homedir();
-const GLOBAL_CFG = path.join(HOME, '.config', 'opencode', 'opencode.json');
 const MCP_ENV    = path.join(HOME, '.local', 'share', 'opencode', 'mcp.env');
 const CWD        = process.cwd();
 
@@ -107,26 +106,6 @@ function loadEnvFile() {
   return env;
 }
 
-function cmdInit(force) {
-  const cfgDir = path.dirname(GLOBAL_CFG);
-
-  if (fs.existsSync(GLOBAL_CFG) && !force) {
-    console.log(`Already exists: ${GLOBAL_CFG}`);
-    console.log('Use --force to overwrite.');
-    return;
-  }
-
-  fs.mkdirSync(cfgDir, { recursive: true });
-  fs.copyFileSync(TEMPLATE, GLOBAL_CFG);
-  console.log(`Written: ${GLOBAL_CFG}`);
-  console.log('');
-  console.log('Store your API keys with:');
-  console.log('  opencode-workspace mcp env NOTION_TOKEN');
-  console.log('  opencode-workspace mcp env GITHUB_TOKEN');
-  console.log('');
-  console.log('They will be loaded automatically when using agent.');
-}
-
 function cmdInstall() {
   // uv
   if (!cmdExists('uv')) {
@@ -180,7 +159,7 @@ function withMcpEnv(cmd) {
 }
 
 function cmdAgent() {
-  withTmux(withMcpEnv("opencode"));
+  withTmux(withMcpEnv(`OPENCODE_CONFIG='${TEMPLATE}' opencode`));
 }
 
 function cmdTerm() {
@@ -295,8 +274,6 @@ With no arguments, launches the OpenCode agent in a new split pane
 (auto-creates a tmux session if needed).
 
 Commands:
-  init [--force]        Write ~/.config/opencode/opencode.json from the bundled template.
-                        Does nothing if the file already exists (use --force to overwrite).
   install               Install dependencies: uv, glab, opencode, semgrep.
   agent                 Split a pane to the right in the current directory and run opencode.
   term                  Split a pane to the right as a plain terminal.
@@ -318,10 +295,7 @@ if (!command) {
   return;
 }
 
-const force = rest.includes('--force');
-
 switch (command) {
-  case 'init':    cmdInit(force); break;
   case 'install': cmdInstall(); break;
   case 'agent':   cmdAgent(); break;
   case 'term':    cmdTerm(); break;

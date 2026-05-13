@@ -10,8 +10,6 @@ install:
 test:
 	@echo "--- help ---"
 	opencode-workspace --help
-	@echo "--- init (already exists, no --force) ---"
-	opencode-workspace init
 	@echo "--- unknown command exits non-zero ---"
 	! opencode-workspace bogus >/dev/null 2>&1
 	@echo "All checks passed."
