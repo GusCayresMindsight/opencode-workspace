@@ -73,10 +73,21 @@ function cmdExists(name) {
   return capture(['which', name]) !== null;
 }
 
-function requireTmux() {
-  if (!process.env.TMUX) {
-    console.error('Not inside a tmux session. Start tmux first.');
-    process.exit(1);
+function ensureTmux() {
+  if (process.env.TMUX) return null;
+  const session = 'opencode-workspace';
+  spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'pipe' });
+  run(['tmux', 'new-session', '-s', session, '-d']);
+  return session;
+}
+
+function withTmux(cmd) {
+  const session = ensureTmux();
+  if (session) {
+    run(['tmux', 'split-window', '-h', '-c', CWD, '-t', session, `bash -c '${cmd}'`]);
+    run(['tmux', 'attach', '-t', session]);
+  } else {
+    run(['tmux', 'split-window', '-h', '-c', CWD, `bash -c '${cmd}'`]);
   }
 }
 
@@ -113,7 +124,7 @@ function cmdInit(force) {
   console.log('  opencode-workspace mcp env NOTION_TOKEN');
   console.log('  opencode-workspace mcp env GITHUB_TOKEN');
   console.log('');
-  console.log('They will be loaded automatically when using agent / ask.');
+  console.log('They will be loaded automatically when using agent.');
 }
 
 function cmdInstall() {
@@ -169,24 +180,11 @@ function withMcpEnv(cmd) {
 }
 
 function cmdAgent() {
-  requireTmux();
-  run(['tmux', 'split-window', '-h', '-c', CWD, `bash -c '${withMcpEnv("opencode")}'`]);
-}
-
-function cmdAsk(prompt) {
-  if (!prompt) {
-    console.error('Usage: opencode-workspace ask "your prompt here"');
-    process.exit(1);
-  }
-  requireTmux();
-  const safe = prompt.replace(/'/g, "'\\''");
-  run(['tmux', 'split-window', '-h', '-c', CWD,
-    `bash -c '${withMcpEnv(`opencode --prompt '"'"'${safe}'"'"'`)}'`]);
+  withTmux(withMcpEnv("opencode"));
 }
 
 function cmdTerm() {
-  requireTmux();
-  run(['tmux', 'split-window', '-h', '-c', CWD]);
+  withTmux("");
 }
 
 function promptPassword(query) {
@@ -289,16 +287,18 @@ function cmdMcpEnv(name) {
 
 function printHelp() {
   console.log(`
-@gus/opencode-workspace — spawn OpenCode agent panes from any directory
+@gus/opencode-workspace — tmux workspace for OpenCode AI agents
 
-Usage: opencode-workspace <command> [options]
+Usage: opencode-workspace [command]
+
+With no arguments, launches the OpenCode agent in a new split pane
+(auto-creates a tmux session if needed).
 
 Commands:
   init [--force]        Write ~/.config/opencode/opencode.json from the bundled template.
                         Does nothing if the file already exists (use --force to overwrite).
   install               Install dependencies: uv, glab, opencode, semgrep.
   agent                 Split a pane to the right in the current directory and run opencode.
-  ask "<prompt>"        Split a pane to the right and run opencode with a prompt.
   term                  Split a pane to the right as a plain terminal.
   mcp env VAR_NAME      Prompt for a secret and store it in ~/.local/share/opencode/mcp.env.
 `);
@@ -308,9 +308,14 @@ Commands:
 
 const [, , command, ...rest] = process.argv;
 
-if (!command || command === '--help' || command === '-h') {
+if (command === '--help' || command === '-h') {
   printHelp();
   process.exit(0);
+}
+
+if (!command) {
+  cmdAgent();
+  return;
 }
 
 const force = rest.includes('--force');
@@ -319,7 +324,6 @@ switch (command) {
   case 'init':    cmdInit(force); break;
   case 'install': cmdInstall(); break;
   case 'agent':   cmdAgent(); break;
-  case 'ask':     cmdAsk(rest.find(a => !a.startsWith('--'))); break;
   case 'term':    cmdTerm(); break;
   case 'mcp':     cmdMcp(rest.filter(a => !a.startsWith('--'))); break;
   default:

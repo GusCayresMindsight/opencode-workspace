@@ -1,6 +1,7 @@
 # opencode-workspace
 
-Spawns [OpenCode](https://opencode.ai) agent panes to the right of your current tmux pane, from any directory.
+Launches [OpenCode](https://opencode.ai) AI agents in a tmux split-pane layout, from any directory.
+Auto-creates a tmux session if you're not already in one.
 
 ## Install
 
@@ -22,22 +23,20 @@ export GITHUB_TOKEN=...
 
 ## Usage
 
-From inside any tmux session, in any directory:
-
 ```bash
-opencode-workspace agent          # split pane to the right, run opencode
-opencode-workspace ask "..."      # split pane to the right, run opencode with a prompt
-opencode-workspace term           # split pane to the right, plain terminal
+opencode-workspace                  # launch OpenCode agent (default, auto-creates tmux)
+opencode-workspace agent            # same as above
+opencode-workspace term             # split pane to the right, plain terminal
 ```
 
 ## Commands
 
 | Command | Description |
 |---|---|
+| `opencode-workspace` (default) | Launch the OpenCode agent. Auto-creates a tmux session if needed. |
 | `opencode-workspace init [--force]` | Write `~/.config/opencode/opencode.json` from the bundled template. Does nothing if the file already exists (`--force` to overwrite). |
 | `opencode-workspace install` | Install dependencies: uv, glab, opencode, semgrep. |
 | `opencode-workspace agent` | Split a pane to the right in the current directory and run opencode. |
-| `opencode-workspace ask "<prompt>"` | Split a pane to the right and run opencode with a prompt. |
 | `opencode-workspace term` | Split a pane to the right as a plain terminal. |
 
 ## MCP servers included
