@@ -16,8 +16,8 @@ npm install -g @gus/opencode-workspace
 opencode-workspace init
 
 # Add your API keys to ~/.bashrc or ~/.zshrc
-export ANTHROPIC_API_KEY=...
 export NOTION_TOKEN=...
+export GITHUB_TOKEN=...
 ```
 
 ## Usage
@@ -53,6 +53,7 @@ The `init` template configures these MCP servers out of the box:
 | `semgrep` | Code scanning via `semgrep mcp` |
 | `aws-knowledge` | AWS docs & regional availability (remote) |
 | `sequential-thinking` | Structured reasoning via `@modelcontextprotocol/server-sequential-thinking` |
+| `github` | GitHub API via `@modelcontextprotocol/server-github` (requires `GITHUB_TOKEN`) |
 
 ## Prerequisites
 

@@ -5,12 +5,14 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const readline = require('readline');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEMPLATE   = path.join(__dirname, '..', 'lib', 'opencode.json.template');
 const HOME       = os.homedir();
 const GLOBAL_CFG = path.join(HOME, '.config', 'opencode', 'opencode.json');
+const MCP_ENV    = path.join(HOME, '.local', 'share', 'opencode', 'mcp.env');
 const CWD        = process.cwd();
 
 // Augment PATH so installed tools are always found
@@ -80,6 +82,20 @@ function requireTmux() {
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
+function loadEnvFile() {
+  const env = {};
+  if (fs.existsSync(MCP_ENV)) {
+    const content = fs.readFileSync(MCP_ENV, 'utf8');
+    for (const line of content.split('\n')) {
+      const eqIdx = line.indexOf('=');
+      if (eqIdx > 0) {
+        env[line.slice(0, eqIdx)] = line.slice(eqIdx + 1);
+      }
+    }
+  }
+  return env;
+}
+
 function cmdInit(force) {
   const cfgDir = path.dirname(GLOBAL_CFG);
 
@@ -93,9 +109,11 @@ function cmdInit(force) {
   fs.copyFileSync(TEMPLATE, GLOBAL_CFG);
   console.log(`Written: ${GLOBAL_CFG}`);
   console.log('');
-  console.log('Set these environment variables (e.g. in ~/.bashrc or ~/.zshrc):');
-  console.log('  export ANTHROPIC_API_KEY=...');
-  console.log('  export NOTION_TOKEN=...');
+  console.log('Store your API keys with:');
+  console.log('  opencode-workspace mcp env NOTION_TOKEN');
+  console.log('  opencode-workspace mcp env GITHUB_TOKEN');
+  console.log('');
+  console.log('They will be loaded automatically when using agent / ask.');
 }
 
 function cmdInstall() {
@@ -142,9 +160,17 @@ function cmdInstall() {
   console.log('All dependencies installed.');
 }
 
+function withMcpEnv(cmd) {
+  const env = loadEnvFile();
+  const exports = Object.entries(env)
+    .map(([k, v]) => `export ${k}='${v.replace(/'/g, "'\\''")}'`)
+    .join('; ');
+  return exports ? `${exports}; ${cmd}` : cmd;
+}
+
 function cmdAgent() {
   requireTmux();
-  run(['tmux', 'split-window', '-h', '-c', CWD, "bash -c 'opencode'"]);
+  run(['tmux', 'split-window', '-h', '-c', CWD, `bash -c '${withMcpEnv("opencode")}'`]);
 }
 
 function cmdAsk(prompt) {
@@ -155,12 +181,110 @@ function cmdAsk(prompt) {
   requireTmux();
   const safe = prompt.replace(/'/g, "'\\''");
   run(['tmux', 'split-window', '-h', '-c', CWD,
-    `bash -c 'opencode --prompt '"'"'${safe}'"'"''`]);
+    `bash -c '${withMcpEnv(`opencode --prompt '"'"'${safe}'"'"'`)}'`]);
 }
 
 function cmdTerm() {
   requireTmux();
   run(['tmux', 'split-window', '-h', '-c', CWD]);
+}
+
+function promptPassword(query) {
+  return new Promise((resolve) => {
+    process.stdout.write(query);
+    const stdin = process.stdin;
+
+    if (!stdin.isTTY) {
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.question(query, (answer) => {
+        rl.close();
+        resolve(answer);
+      });
+      return;
+    }
+
+    stdin.setRawMode(true);
+    stdin.resume();
+
+    let password = '';
+    const handler = (c) => {
+      const buf = Buffer.isBuffer(c) ? c : Buffer.from(c);
+      for (let i = 0; i < buf.length; i++) {
+        const char = buf[i];
+        if (char === 0x03) {
+          stdin.removeListener('data', handler);
+          stdin.setRawMode(false);
+          stdin.pause();
+          process.stdout.write('^C\n');
+          process.exit(1);
+        } else if (char === 0x04 || char === 0x0a || char === 0x0d) {
+          stdin.removeListener('data', handler);
+          stdin.setRawMode(false);
+          stdin.pause();
+          process.stdout.write('\n');
+          resolve(password);
+          return;
+        } else if (char === 0x7f || char === 0x08) {
+          if (password.length > 0) {
+            password = password.slice(0, -1);
+            process.stdout.write('\b \b');
+          }
+        } else {
+          password += String.fromCodePoint(char);
+          process.stdout.write('*');
+        }
+      }
+    };
+    stdin.on('data', handler);
+  });
+}
+
+function cmdMcp(args) {
+  const [subcommand, ...subargs] = args;
+  if (subcommand === 'env') {
+    const name = subargs[0];
+    if (!name) {
+      console.error('Usage: opencode-workspace mcp env VAR_NAME');
+      process.exit(1);
+    }
+    cmdMcpEnv(name);
+  } else {
+    console.error('Usage: opencode-workspace mcp env VAR_NAME');
+    process.exit(1);
+  }
+}
+
+function cmdMcpEnv(name) {
+  (async () => {
+    const key = name;
+    const value = await promptPassword(`Enter value for ${key}: `);
+
+    const dir = path.dirname(MCP_ENV);
+    fs.mkdirSync(dir, { recursive: true });
+
+    let entries = {};
+    if (fs.existsSync(MCP_ENV)) {
+      const content = fs.readFileSync(MCP_ENV, 'utf8');
+      for (const line of content.split('\n')) {
+        const eqIdx = line.indexOf('=');
+        if (eqIdx > 0) {
+          entries[line.slice(0, eqIdx)] = line.slice(eqIdx + 1);
+        }
+      }
+    }
+
+    entries[key] = value;
+
+    const output = Object.entries(entries)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n') + '\n';
+
+    fs.writeFileSync(MCP_ENV, output);
+    console.log(`Saved ${key} to ${MCP_ENV}`);
+  })().catch((e) => {
+    console.error(e.message);
+    process.exit(1);
+  });
 }
 
 function printHelp() {
@@ -170,12 +294,13 @@ function printHelp() {
 Usage: opencode-workspace <command> [options]
 
 Commands:
-  init [--force]    Write ~/.config/opencode/opencode.json from the bundled template.
-                    Does nothing if the file already exists (use --force to overwrite).
-  install           Install dependencies: uv, glab, opencode, semgrep.
-  agent             Split a pane to the right in the current directory and run opencode.
-  ask "<prompt>"    Split a pane to the right and run opencode with a prompt.
-  term              Split a pane to the right as a plain terminal.
+  init [--force]        Write ~/.config/opencode/opencode.json from the bundled template.
+                        Does nothing if the file already exists (use --force to overwrite).
+  install               Install dependencies: uv, glab, opencode, semgrep.
+  agent                 Split a pane to the right in the current directory and run opencode.
+  ask "<prompt>"        Split a pane to the right and run opencode with a prompt.
+  term                  Split a pane to the right as a plain terminal.
+  mcp env VAR_NAME      Prompt for a secret and store it in ~/.local/share/opencode/mcp.env.
 `);
 }
 
@@ -194,8 +319,9 @@ switch (command) {
   case 'init':    cmdInit(force); break;
   case 'install': cmdInstall(); break;
   case 'agent':   cmdAgent(); break;
-  case 'ask':     cmdAsk(rest.find(a => !a.startsWith('-'))); break;
+  case 'ask':     cmdAsk(rest.find(a => !a.startsWith('--'))); break;
   case 'term':    cmdTerm(); break;
+  case 'mcp':     cmdMcp(rest.filter(a => !a.startsWith('--'))); break;
   default:
     process.stderr.write(`Unknown command: ${command}\n`);
     process.stderr.write(`Run 'opencode-workspace --help' for usage.\n`);
