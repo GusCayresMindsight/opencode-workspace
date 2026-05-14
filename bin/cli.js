@@ -180,8 +180,74 @@ function withMcpEnv(cmd) {
   return exports ? `${exports}; ${cmd}` : cmd;
 }
 
+function buildWelcomeScript() {
+  const script = [
+    '#!/usr/bin/env bash',
+    'clear',
+    "printf 'Welcome to opencode-workspace\\n'",
+    "printf '═══════════════════════════════════════\\n\\n'",
+    "printf 'COMMANDS\\n'",
+    "printf '  ow               Open a new window (terminal + AI agent)\\n'",
+    "printf '  ow term          Open a plain terminal pane in the current window\\n'",
+    "printf '  ow install       Install dependencies (uv, glab, opencode, semgrep)\\n'",
+    "printf '  ow mcp env VAR   Store a secret for MCP tool credentials\\n\\n'",
+    "printf 'OPENCODE BASICS\\n'",
+    "printf '  The pane to your right is running OpenCode, an AI coding assistant.\\n'",
+    "printf '  Describe tasks in plain English, for example:\\n\\n'",
+    "printf '    > Refactor the login function to handle network errors\\n'",
+    "printf '    > Write unit tests for the Cart component\\n'",
+    "printf '    > Explain what src/utils/format.ts does\\n\\n'",
+    "printf '  OpenCode reads and edits your files, runs shell commands, and searches\\n'",
+    "printf '  your codebase. It will ask before making irreversible changes.\\n\\n'",
+    "printf '  Ctrl+C  cancel current task\\n'",
+    "printf '  Ctrl+D  exit OpenCode\\n\\n'",
+    'exec bash',
+    '',
+  ].join('\n');
+  const dest = '/tmp/ow-welcome.sh';
+  fs.writeFileSync(dest, script, { mode: 0o755 });
+  return dest;
+}
+
 function cmdAgent() {
-  withTmux(withMcpEnv(`OPENCODE_CONFIG='${TEMPLATE}' opencode`));
+  const session = ensureTmux();
+
+  // Get the left pane ID:
+  //   - If a new session was just created, use its initial pane.
+  //   - If already inside tmux, open a new window (focus switches to it; old window untouched).
+  let leftPaneId;
+  if (session) {
+    leftPaneId = capture(['tmux', 'list-panes', '-t', session, '-F', '#{pane_id}']);
+  } else {
+    leftPaneId = capture(['tmux', 'new-window', '-c', CWD, '-P', '-F', '#{pane_id}']);
+  }
+
+  if (!leftPaneId) {
+    console.error('Failed to get tmux pane ID');
+    process.exit(1);
+  }
+
+  // Split horizontally: right pane gets 70%, left terminal keeps 30%
+  const rightPaneId = capture([
+    'tmux', 'split-window', '-h', '-p', '70',
+    '-t', leftPaneId, '-c', CWD, '-P', '-F', '#{pane_id}',
+  ]);
+
+  if (!rightPaneId) {
+    console.error('Failed to split tmux pane');
+    process.exit(1);
+  }
+
+  // Left pane: welcome message, then interactive shell
+  const welcomeScript = buildWelcomeScript();
+  run(['tmux', 'send-keys', '-t', leftPaneId, `bash ${welcomeScript}`, 'Enter']);
+
+  // Right pane: OpenCode agent
+  const agentCmd = withMcpEnv(`OPENCODE_CONFIG='${TEMPLATE}' opencode`);
+  run(['tmux', 'send-keys', '-t', rightPaneId, agentCmd, 'Enter']);
+
+  // Attach if we created the session
+  if (session) run(['tmux', 'attach', '-t', session]);
 }
 
 function cmdTerm() {
