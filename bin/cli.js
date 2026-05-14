@@ -215,12 +215,15 @@ function cmdAgent() {
   // Get the left pane ID:
   //   - If a new session was just created, use its initial pane.
   //   - If already inside tmux, open a new window (focus switches to it; old window untouched).
-  let leftPaneId;
-  if (session) {
-    leftPaneId = capture(['tmux', 'list-panes', '-t', session, '-F', '#{pane_id}']);
-  } else {
-    leftPaneId = capture(['tmux', 'new-window', '-c', CWD, '-P', '-F', '#{pane_id}']);
+  if (!session) {
+    run(['tmux', 'new-window', '-c', CWD]);
   }
+
+  // Use list-panes to reliably get the pane ID — querying after creation avoids
+  // relying on -P/-F stdout capture from new-window/split-window, which is fragile
+  // with piped stdio on some tmux versions.
+  const leftPaneTarget = session ? ['-t', session] : [];
+  const leftPaneId = capture(['tmux', 'list-panes', ...leftPaneTarget, '-F', '#{pane_id}']);
 
   if (!leftPaneId) {
     console.error('Failed to get tmux pane ID');
@@ -228,10 +231,15 @@ function cmdAgent() {
   }
 
   // Split horizontally: right pane gets 70%, left terminal keeps 30%
-  const rightPaneId = capture([
-    'tmux', 'split-window', '-h', '-p', '70',
-    '-t', leftPaneId, '-c', CWD, '-P', '-F', '#{pane_id}',
-  ]);
+  run(['tmux', 'split-window', '-h', '-p', '70', '-t', leftPaneId, '-c', CWD]);
+
+  // Query pane IDs after the split and find the new right pane
+  const panesOutput = capture(['tmux', 'list-panes', ...leftPaneTarget, '-F', '#{pane_id}']);
+  const rightPaneId = (panesOutput || '')
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .find(id => id !== leftPaneId);
 
   if (!rightPaneId) {
     console.error('Failed to split tmux pane');
