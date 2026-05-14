@@ -82,12 +82,34 @@ function ensureTmux() {
 
 function withTmux(cmd) {
   const session = ensureTmux();
-  if (session) {
-    run(['tmux', 'split-window', '-h', '-c', CWD, '-t', session, `bash -c '${cmd}'`]);
-    run(['tmux', 'attach', '-t', session]);
+
+  // Inspect current pane layout to decide split direction
+  const listArgs = ['tmux', 'list-panes', '-F', '#{pane_id} #{pane_left}'];
+  if (session) listArgs.push('-t', session);
+  const panesOutput = capture(listArgs);
+  const panes = (panesOutput || '').split('\n').filter(Boolean).map(line => {
+    const [id, left] = line.trim().split(' ');
+    return { id, left: parseInt(left, 10) };
+  });
+
+  const hasRightColumn = panes.some(p => p.left > 0);
+  const splitArgs = ['tmux', 'split-window', '-c', CWD];
+
+  if (!hasRightColumn) {
+    // No right column yet — create one with a horizontal split
+    splitArgs.push('-h');
+    if (session) splitArgs.push('-t', session);
   } else {
-    run(['tmux', 'split-window', '-h', '-c', CWD, `bash -c '${cmd}'`]);
+    // Right column exists — stack a new pane below the rightmost one
+    const maxLeft = Math.max(...panes.map(p => p.left));
+    const rightPane = panes.find(p => p.left === maxLeft);
+    splitArgs.push('-v', '-t', rightPane.id);
   }
+
+  if (cmd) splitArgs.push(`bash -c '${cmd}'`);
+
+  run(splitArgs);
+  if (session) run(['tmux', 'attach', '-t', session]);
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────

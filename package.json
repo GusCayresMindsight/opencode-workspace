@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "description": "tmux workspace for running OpenCode agents with session persistence",
   "bin": {
-    "opencode-workspace": "./bin/cli.js"
+    "opencode-workspace": "./bin/cli.js",
+    "ow": "./bin/cli.js"
   },
   "scripts": {
     "postinstall": "node bin/cli.js install"
