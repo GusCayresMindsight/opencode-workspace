@@ -33,6 +33,10 @@ function run(args, opts = {}) {
     console.error(`Failed to run ${args[0]}: ${result.error.message}`);
     process.exit(1);
   }
+  if (result.status !== 0) {
+    console.error(`${args[0]} exited with code ${result.status}`);
+    process.exit(result.status);
+  }
   return result;
 }
 
@@ -231,7 +235,7 @@ function cmdAgent() {
   }
 
   // Split horizontally: right pane gets 70%, left terminal keeps 30%
-  run(['tmux', 'split-window', '-h', '-p', '70', '-t', leftPaneId, '-c', CWD]);
+  run(['tmux', 'split-window', '-h', '-l', '70%', '-t', leftPaneId, '-c', CWD]);
 
   // Query pane IDs after the split and find the new right pane
   const panesOutput = capture(['tmux', 'list-panes', ...leftPaneTarget, '-F', '#{pane_id}']);
