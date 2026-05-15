@@ -59,6 +59,15 @@ process.on("uncaughtException", (e) => {
 
 const args = hideBin(process.argv)
 
+// Bare `ow` invocation outside tmux → launch workspace manager.
+// Inside tmux (right pane, or any tmux context), TMUX env var is set
+// so we fall through and start the TUI normally.
+if (args.length === 0 && !process.env.TMUX) {
+  const { runWorkspace } = await import("./cli/cmd/ws")
+  runWorkspace()
+  process.exit(0)
+}
+
 function show(out: string) {
   const text = out.trimStart()
   if (!text.startsWith("ow ")) {

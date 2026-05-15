@@ -95,6 +95,86 @@ function buildWelcomeScript(): string {
   return dest
 }
 
+// ─── core workspace logic (also called directly for bare `ow` invocation) ────
+
+export function runWorkspace(sub?: string): void {
+  // ─── term subcommand ──────────────────────────────────────────────────────
+  if (sub === "term") {
+    const session = ensureTmuxSession()
+    if (isInsideTmux() && isInsideOwSession()) {
+      run(["tmux", "split-window", "-v", "-c", CWD])
+      return
+    }
+    if (!session) {
+      const name = getNextOwSessionName()
+      run(["tmux", "new-window", "-n", name, "-c", CWD])
+    }
+    if (session) run(["tmux", "attach", "-t", session])
+    return
+  }
+
+  // ─── default: open workspace with agent pane ──────────────────────────────
+  const session = ensureTmuxSession()
+
+  if (isInsideTmux() && isInsideOwSession()) {
+    // Already inside ow-session — stack a new agent pane
+    const beforePanes = (capture(["tmux", "list-panes", "-F", "#{pane_id}"]) || "")
+      .split("\n")
+      .filter(Boolean)
+      .map((s) => s.trim())
+
+    run(["tmux", "split-window", "-v", "-c", CWD])
+
+    const afterPanes = (capture(["tmux", "list-panes", "-F", "#{pane_id}"]) || "")
+      .split("\n")
+      .filter(Boolean)
+      .map((s) => s.trim())
+
+    const newPaneId = afterPanes.find((id) => !beforePanes.includes(id))
+    if (newPaneId) {
+      const agentCmd = withMcpEnv("ow")
+      run(["tmux", "send-keys", "-t", newPaneId, agentCmd, "Enter"])
+    }
+    return
+  }
+
+  // Standard two-pane layout
+  if (!session) {
+    const name = getNextOwSessionName()
+    run(["tmux", "new-window", "-n", name, "-c", CWD])
+  }
+
+  const leftPaneTarget = session ? ["-t", session] : []
+  const leftPaneId = capture(["tmux", "list-panes", ...leftPaneTarget, "-F", "#{pane_id}"])
+
+  if (!leftPaneId) {
+    process.stderr.write("Failed to get tmux pane ID\n")
+    process.exit(1)
+  }
+
+  run(["tmux", "split-window", "-h", "-l", "70%", "-t", leftPaneId, "-c", CWD])
+
+  const panesOutput = capture(["tmux", "list-panes", ...leftPaneTarget, "-F", "#{pane_id}"])
+  const rightPaneId = (panesOutput || "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .find((id) => id !== leftPaneId)
+
+  if (!rightPaneId) {
+    process.stderr.write("Failed to split tmux pane\n")
+    process.exit(1)
+  }
+
+  const welcomeScript = buildWelcomeScript()
+  run(["tmux", "send-keys", "-t", leftPaneId, `bash ${welcomeScript}`, "Enter"])
+
+  const agentCmd = withMcpEnv("ow")
+  run(["tmux", "send-keys", "-t", rightPaneId, agentCmd, "Enter"])
+
+  if (session) run(["tmux", "attach", "-t", session])
+}
+
 // ─── ws command ───────────────────────────────────────────────────────────────
 
 export const WsCommand = effectCmd({
@@ -107,84 +187,6 @@ export const WsCommand = effectCmd({
       describe: 'Optional subcommand: "term" to open a plain terminal pane',
     }),
   handler: Effect.fn("Ws.open")(function* (args) {
-    yield* Effect.sync(() => {
-      const sub = (args as any).subcommand
-
-      // ─── term subcommand ────────────────────────────────────────────────────
-      if (sub === "term") {
-        const session = ensureTmuxSession()
-        if (isInsideTmux() && isInsideOwSession()) {
-          run(["tmux", "split-window", "-v", "-c", CWD])
-          return
-        }
-        if (!session) {
-          const name = getNextOwSessionName()
-          run(["tmux", "new-window", "-n", name, "-c", CWD])
-        }
-        if (session) run(["tmux", "attach", "-t", session])
-        return
-      }
-
-      // ─── default: open workspace with agent pane ────────────────────────────
-      const session = ensureTmuxSession()
-
-      if (isInsideTmux() && isInsideOwSession()) {
-        // Already inside ow-session — stack a new agent pane
-        const beforePanes = (capture(["tmux", "list-panes", "-F", "#{pane_id}"]) || "")
-          .split("\n")
-          .filter(Boolean)
-          .map((s) => s.trim())
-
-        run(["tmux", "split-window", "-v", "-c", CWD])
-
-        const afterPanes = (capture(["tmux", "list-panes", "-F", "#{pane_id}"]) || "")
-          .split("\n")
-          .filter(Boolean)
-          .map((s) => s.trim())
-
-        const newPaneId = afterPanes.find((id) => !beforePanes.includes(id))
-        if (newPaneId) {
-          const agentCmd = withMcpEnv("ow")
-          run(["tmux", "send-keys", "-t", newPaneId, agentCmd, "Enter"])
-        }
-        return
-      }
-
-      // Standard two-pane layout
-      if (!session) {
-        const name = getNextOwSessionName()
-        run(["tmux", "new-window", "-n", name, "-c", CWD])
-      }
-
-      const leftPaneTarget = session ? ["-t", session] : []
-      const leftPaneId = capture(["tmux", "list-panes", ...leftPaneTarget, "-F", "#{pane_id}"])
-
-      if (!leftPaneId) {
-        process.stderr.write("Failed to get tmux pane ID\n")
-        process.exit(1)
-      }
-
-      run(["tmux", "split-window", "-h", "-l", "70%", "-t", leftPaneId, "-c", CWD])
-
-      const panesOutput = capture(["tmux", "list-panes", ...leftPaneTarget, "-F", "#{pane_id}"])
-      const rightPaneId = (panesOutput || "")
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .find((id) => id !== leftPaneId)
-
-      if (!rightPaneId) {
-        process.stderr.write("Failed to split tmux pane\n")
-        process.exit(1)
-      }
-
-      const welcomeScript = buildWelcomeScript()
-      run(["tmux", "send-keys", "-t", leftPaneId, `bash ${welcomeScript}`, "Enter"])
-
-      const agentCmd = withMcpEnv("ow")
-      run(["tmux", "send-keys", "-t", rightPaneId, agentCmd, "Enter"])
-
-      if (session) run(["tmux", "attach", "-t", session])
-    })
+    yield* Effect.sync(() => runWorkspace((args as any).subcommand))
   }),
 })
