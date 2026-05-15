@@ -9,10 +9,12 @@ const readline = require('readline');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TEMPLATE   = path.join(__dirname, '..', 'lib', 'opencode.json.template');
-const HOME       = os.homedir();
-const MCP_ENV    = path.join(HOME, '.local', 'share', 'opencode', 'mcp.env');
-const CWD        = process.cwd();
+const TEMPLATE        = path.join(__dirname, '..', 'lib', 'opencode.json.template');
+const HOME            = os.homedir();
+const MCP_ENV         = path.join(HOME, '.local', 'share', 'opencode', 'mcp.env');
+const CWD             = process.cwd();
+const pkg             = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+const OPENCODE_VERSION = pkg.opencode && pkg.opencode.version;
 
 // Augment PATH so installed tools are always found
 process.env.PATH = [
@@ -171,6 +173,12 @@ function loadEnvFile() {
   return env;
 }
 
+function installOpencode() {
+  const versionFlag = OPENCODE_VERSION ? `--version ${OPENCODE_VERSION}` : '';
+  const cmd = `curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path${versionFlag ? ' ' + versionFlag : ''}`;
+  runOrThrow(['bash', '-c', cmd]);
+}
+
 function cmdInstall() {
   // uv
   if (!cmdExists('uv')) {
@@ -197,8 +205,8 @@ function cmdInstall() {
 
   // opencode
   if (!cmdExists('opencode')) {
-    console.log('Installing opencode...');
-    tryStep('opencode', () => runOrThrow(['bash', '-c', 'curl -fsSL https://opencode.ai/install | bash']));
+    console.log(`Installing opencode${OPENCODE_VERSION ? ' ' + OPENCODE_VERSION : ''}...`);
+    tryStep('opencode', () => installOpencode());
   } else {
     console.log(`opencode already installed: ${capture(['bash', '-c', 'opencode --version 2>&1 | head -1'])}`);
   }
@@ -253,6 +261,11 @@ function buildWelcomeScript() {
 }
 
 function cmdAgent() {
+  if (!cmdExists('opencode')) {
+    console.log(`opencode not found, installing${OPENCODE_VERSION ? ' ' + OPENCODE_VERSION : ''}...`);
+    tryStep('opencode', () => installOpencode());
+  }
+
   const session = ensureTmux();
 
   if (process.env.TMUX && isInsideOwSession()) {
