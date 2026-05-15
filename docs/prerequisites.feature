@@ -1,44 +1,18 @@
 Feature: Prerequisites
-  opencode-workspace requires Node.js >= 18 for all commands.
-  The TUI commands (agent, term) additionally require tmux.
-  The install command requires curl and, for semgrep, uv.
-  Standard development workflows assume git is available.
+  Building and running ow requires Bun 1.3.13 (pinned in package.json
+  packageManager field). The workspace commands additionally require tmux.
 
-  The Node.js version requirement is declared in package.json["engines"]["node"]
-  and is enforceable at install time by npm/pnpm/yarn.  The system tool
-  requirements (tmux, curl, git) are discovered at runtime: the command that
-  needs them will fail with a clear error message if they are absent.
-
-  Scenario: The package.json engines field requires Node.js 18 or higher
+  Scenario: The package.json packageManager field pins Bun 1.3.13
     When package.json is read
-    Then the "engines.node" field is ">=18"
+    Then the "packageManager" field is "bun@1.3.13"
 
-  Scenario: The running Node.js version satisfies the declared engine requirement
-    Given the current Node.js version is 18 or higher
-    When any opencode-workspace command is run
-    Then the command does not exit with a "Node version" error
+  Scenario: bun install succeeds from a clean checkout
+    Given the repository has been freshly cloned
+    When "bun install" is run at the repo root
+    Then all workspace packages are resolved without error
 
   @wip
-  Scenario: tmux is required for the agent command
+  Scenario: tmux is required for the ow ws command
     Given "tmux" is not installed on the system
-    When the user runs "opencode-workspace agent"
+    When the user runs "ow ws"
     Then an error is printed and the process exits with a non-zero code
-
-  @wip
-  Scenario: tmux is required for the term command
-    Given "tmux" is not installed on the system
-    When the user runs "opencode-workspace term"
-    Then an error is printed and the process exits with a non-zero code
-
-  @wip
-  Scenario: curl is required by the install command for downloading uv and opencode
-    Given "curl" is not installed on the system
-    When the user runs "opencode-workspace install"
-    Then the steps that invoke curl fail with a warning
-    And the remaining install steps that do not require curl still run
-
-  @wip
-  Scenario: git is available as a standard development tool
-    Given "git" is installed on the system
-    When git-dependent workflows are run inside the tmux workspace
-    Then git commands execute without PATH or permission errors

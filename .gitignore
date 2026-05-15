@@ -1,19 +1,23 @@
-# Sub-projects managed separately
-# opencode:allow
-workspaces/
-# Local OpenCode config and state
+# Dependencies
+node_modules/
+.opencode/node_modules/
+
+# Build outputs
+packages/opencode/dist/
+packages/opencode/.artifacts/
+
+# Local OpenCode config/state
 .opencode/
 
+# Sub-projects managed separately
+workspaces/
 
-# Secrets
+# Playwright
+.playwright-mcp/
+
+# Secrets / env
 .env
-
-# Node dependencies
-.opencode/node_modules/
 
 # OS noise
 .DS_Store
 Thumbs.db
-
-# Playwright
-.playwright-mcp/
