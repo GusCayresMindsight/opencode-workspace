@@ -22,14 +22,33 @@
  *   2. Complements the TUI first-message hook (lib/tool-retrieval.plugin.js)
  *      by giving the agent on-demand access to the retrieval pipeline at any
  *      point in the conversation.
+ *
+ * Exports:
+ *   createMcpServer(sdk) — builds and returns a configured Server instance.
+ *                          Accepts SDK dependencies explicitly so it can be
+ *                          unit-tested with a mock Server (no stdio transport).
+ *   startServer()        — loads the real SDK, calls createMcpServer, attaches
+ *                          a StdioServerTransport, and connects.  Called by
+ *                          bin/cli.js for the mcp-serve command.
  */
 
 const { handleSearchTools } = require('./search-tools-handler');
 
-async function startServer() {
-  const { Server }               = await import('@modelcontextprotocol/sdk/server/index.js');
-  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+// ── server factory ────────────────────────────────────────────────────────────
 
+/**
+ * Create and configure the MCP Server instance.
+ *
+ * Accepts the SDK constructors/schemas as explicit parameters so this function
+ * can be unit-tested without spawning a real stdio transport.
+ *
+ * @param {object} sdk
+ * @param {Function} sdk.Server                   - Server constructor
+ * @param {object}  sdk.ListToolsRequestSchema     - Zod schema for tools/list
+ * @param {object}  sdk.CallToolRequestSchema      - Zod schema for tools/call
+ * @returns {object} configured MCP Server instance
+ */
+function createMcpServer({ Server, ListToolsRequestSchema, CallToolRequestSchema }) {
   const server = new Server(
     { name: 'tool-retrieval', version: '1.0.0' },
     { capabilities: { tools: {} } },
@@ -37,7 +56,7 @@ async function startServer() {
 
   // ── tool list ─────────────────────────────────────────────────────────────
   server.setRequestHandler(
-    { method: 'tools/list' },
+    ListToolsRequestSchema,
     async () => ({
       tools: [
         {
@@ -71,7 +90,7 @@ async function startServer() {
 
   // ── tool call ─────────────────────────────────────────────────────────────
   server.setRequestHandler(
-    { method: 'tools/call' },
+    CallToolRequestSchema,
     async (request) => {
       const { name, arguments: args } = request.params;
 
@@ -86,7 +105,26 @@ async function startServer() {
     },
   );
 
-  // ── transport ─────────────────────────────────────────────────────────────
+  return server;
+}
+
+// ── transport entry point ─────────────────────────────────────────────────────
+
+/**
+ * Load the real MCP SDK, build the server via createMcpServer(), attach a
+ * StdioServerTransport, and connect.
+ *
+ * Called explicitly by bin/cli.js for the `mcp-serve` command — NOT invoked
+ * automatically at module load time so that unit tests can safely require()
+ * this module and call createMcpServer() without triggering stdio binding.
+ */
+async function startServer() {
+  const { Server }               = await import('@modelcontextprotocol/sdk/server/index.js');
+  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+  const { ListToolsRequestSchema, CallToolRequestSchema } =
+    await import('@modelcontextprotocol/sdk/types.js');
+
+  const server    = createMcpServer({ Server, ListToolsRequestSchema, CallToolRequestSchema });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
@@ -94,7 +132,4 @@ async function startServer() {
   process.on('SIGINT',  () => server.close());
 }
 
-startServer().catch(err => {
-  process.stderr.write(`tool-retrieval-server: fatal error: ${err.message}\n`);
-  process.exit(1);
-});
+module.exports = { createMcpServer, startServer };

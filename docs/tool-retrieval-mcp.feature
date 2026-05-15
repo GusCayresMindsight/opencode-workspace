@@ -57,3 +57,22 @@ Feature: On-Demand Tool Retrieval MCP Tool
     And an opencode session is active with no specific browser tools in context
     When the agent calls search_tools with query "click a button in a web page"
     Then at least one tool from the "playwright" server appears in the results
+
+  # ── Server wiring tests (the gap that let the startup crash go undetected) ──
+
+  Scenario: The MCP server wires request handlers with Zod schemas not plain objects
+    When the MCP server is configured with a mock SDK
+    Then setRequestHandler was called twice
+    And the list-tools handler schema is a valid Zod schema
+    And the call-tool handler schema is a valid Zod schema
+
+  Scenario: list-tools returns the search_tools manifest over the wire protocol
+    When the MCP server handles a list-tools request via in-memory transport
+    Then the response contains a tool named "search_tools"
+    And the search_tools tool declares a required "query" input parameter
+
+  Scenario: call-tool returns a valid CallToolResult envelope over the wire protocol
+    Given the tool corpus has not been built
+    When the MCP server handles a call-tool request for "search_tools" via in-memory transport
+    Then the response is a valid CallToolResult with a content array
+    And the content text is a non-empty string

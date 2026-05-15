@@ -172,3 +172,98 @@ Then('at least one tool from the {string} server appears in the results', functi
     `Expected a tool from "${serverName}" in results.\nActual:\n${text}`,
   );
 });
+
+// ─── Server-wiring When ────────────────────────────────────────────────────────
+
+When('the MCP server is configured with a mock SDK', async function () {
+  await this.runStartServer();
+});
+
+When('the MCP server handles a list-tools request via in-memory transport', async function () {
+  await this.runWireListTools();
+});
+
+When('the MCP server handles a call-tool request for {string} via in-memory transport',
+  async function (toolName) {
+    await this.runWireCallTool(toolName, { query: 'test query' });
+  },
+);
+
+// ─── Server-wiring Then ────────────────────────────────────────────────────────
+
+Then('setRequestHandler was called twice', function () {
+  assert.equal(
+    this._serverCalls?.length,
+    2,
+    `Expected setRequestHandler to be called exactly 2 times, got: ${this._serverCalls?.length}`,
+  );
+});
+
+Then('the list-tools handler schema is a valid Zod schema', function () {
+  const schema = this._serverCalls?.[0]?.schema;
+  assert.ok(
+    typeof schema?.parse === 'function',
+    'Expected list-tools schema to be a Zod schema with a .parse() method; ' +
+    'got a plain object — this is the bug: setRequestHandler needs a Zod schema, not { method: "..." }',
+  );
+  const result = schema.safeParse({ method: 'tools/list', params: {} });
+  assert.ok(
+    result.success,
+    `Expected list-tools schema to accept a { method: "tools/list" } request.\n` +
+    `safeParse error: ${JSON.stringify(result.error)}`,
+  );
+});
+
+Then('the call-tool handler schema is a valid Zod schema', function () {
+  const schema = this._serverCalls?.[1]?.schema;
+  assert.ok(
+    typeof schema?.parse === 'function',
+    'Expected call-tool schema to be a Zod schema with a .parse() method; ' +
+    'got a plain object — this is the bug: setRequestHandler needs a Zod schema, not { method: "..." }',
+  );
+  const result = schema.safeParse({ method: 'tools/call', params: { name: 'search_tools', arguments: {} } });
+  assert.ok(
+    result.success,
+    `Expected call-tool schema to accept a tools/call request.\n` +
+    `safeParse error: ${JSON.stringify(result.error)}`,
+  );
+});
+
+Then('the response contains a tool named {string}', function (toolName) {
+  const tools = this._wireToolsList?.tools ?? [];
+  const found = tools.find(t => t.name === toolName);
+  assert.ok(
+    found,
+    `Expected a tool named "${toolName}" in the tools/list response.\n` +
+    `Got: ${tools.map(t => t.name).join(', ') || '(empty)'}`,
+  );
+});
+
+Then('the search_tools tool declares a required {string} input parameter', function (paramName) {
+  const tools = this._wireToolsList?.tools ?? [];
+  const tool  = tools.find(t => t.name === 'search_tools');
+  assert.ok(tool, 'Expected search_tools to be present in tools/list response');
+  const required = tool.inputSchema?.required ?? [];
+  assert.ok(
+    required.includes(paramName),
+    `Expected "${paramName}" to be in inputSchema.required.\nGot: ${JSON.stringify(required)}`,
+  );
+});
+
+Then('the response is a valid CallToolResult with a content array', function () {
+  const result = this._wireCallResult;
+  assert.ok(result, 'Expected _wireCallResult to be set (tools/call produced no response)');
+  assert.ok(
+    Array.isArray(result.content),
+    `Expected result.content to be an array.\nGot: ${JSON.stringify(result)}`,
+  );
+  assert.ok(result.content.length > 0, 'Expected result.content to be non-empty');
+});
+
+Then('the content text is a non-empty string', function () {
+  const text = this._wireCallResult?.content?.[0]?.text;
+  assert.ok(
+    typeof text === 'string' && text.trim().length > 0,
+    `Expected content[0].text to be a non-empty string.\nGot: ${JSON.stringify(text)}`,
+  );
+});
