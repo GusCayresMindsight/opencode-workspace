@@ -11,7 +11,8 @@
   },
   "files": [
     "bin/",
-    "lib/"
+    "lib/",
+    "src/"
   ],
   "engines": {
     "node": ">=18"
@@ -28,5 +29,11 @@
     "workspace",
     "ai",
     "agents"
-  ]
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@huggingface/transformers": "^3.5.0",
+    "better-sqlite3": "^11.10.0",
+    "sqlite-vec": "^0.1.6"
+  }
 }

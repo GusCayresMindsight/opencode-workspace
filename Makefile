@@ -1,9 +1,10 @@
 # Usage:
 #   make install   — install the package globally from this local repo
-#   make test      — run a quick smoke test of the CLI
+#   make test      — quick CLI sanity checks
+#   make smoke     — end-to-end: index all MCP servers, assert top retrieval result
 #   make update    — update pinned dependency versions to their latest releases
 
-.PHONY: install test update
+.PHONY: install test smoke update
 
 install:
 	npm install -g .
@@ -11,9 +12,16 @@ install:
 test:
 	@echo "--- help ---"
 	opencode-workspace --help
-	@echo "--- unknown command exits non-zero ---"
-	! opencode-workspace bogus >/dev/null 2>&1
+	@echo "--- OPENCODE_WORKSPACE_RETRIEVAL=off passes through (no retrieval output) ---"
+	OPENCODE_WORKSPACE_RETRIEVAL=off opencode-workspace --help >/dev/null
 	@echo "All checks passed."
+
+smoke:
+	@echo "=== Step 1: index MCP tool corpus ==="
+	node bin/cli.js index
+	@echo ""
+	@echo "=== Step 2: retrieval assertion ==="
+	node bin/smoke.js
 
 update:
 	@node -e " \
