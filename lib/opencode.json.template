@@ -45,6 +45,10 @@
       "environment": {
         "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
       }
+    },
+    "tool-retrieval": {
+      "type": "local",
+      "command": ["opencode-workspace", "mcp-serve"]
     }
   }
 }

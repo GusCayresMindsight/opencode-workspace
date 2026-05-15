@@ -10,6 +10,9 @@ const readline = require('readline');
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEMPLATE        = path.join(__dirname, '..', 'lib', 'opencode.json.template');
+const PLUGIN_SRC      = path.join(__dirname, '..', 'lib', 'tool-retrieval.plugin.js');
+const PLUGIN_DEST_DIR = path.join(os.homedir(), '.config', 'opencode', 'plugins');
+const PLUGIN_DEST     = path.join(PLUGIN_DEST_DIR, 'ow-tool-retrieval.js');
 const HOME            = os.homedir();
 const MCP_ENV         = path.join(HOME, '.local', 'share', 'opencode', 'mcp.env');
 const CWD             = process.cwd();
@@ -219,6 +222,14 @@ function cmdInstall() {
     console.log(`semgrep already installed: ${capture(['semgrep', '--version'])}`);
   }
 
+  // opencode-workspace TUI plugin
+  console.log('Installing TUI retrieval plugin...');
+  tryStep('ow-tool-retrieval plugin', () => {
+    fs.mkdirSync(PLUGIN_DEST_DIR, { recursive: true });
+    fs.copyFileSync(PLUGIN_SRC, PLUGIN_DEST);
+    console.log(`  → ${PLUGIN_DEST}`);
+  });
+
   console.log('');
   console.log('All dependencies installed.');
 }
@@ -242,6 +253,8 @@ function buildWelcomeScript() {
     "printf '  ow term          Open a plain terminal pane in the current window\\n'",
     "printf '  ow install       Install dependencies (uv, glab, opencode, semgrep)\\n'",
     "printf '  ow mcp env VAR   Store a secret for MCP tool credentials\\n\\n'",
+    "printf '  ow index         Index MCP tool corpus for retrieval\\n'",
+    "printf '  ow \"<prompt>\"    One-shot: retrieve tools + run opencode\\n\\n'",
     "printf 'OPENCODE BASICS\\n'",
     "printf '  The pane to your right is running OpenCode, an AI coding assistant.\\n'",
     "printf '  Describe tasks in plain English, for example:\\n\\n'",
@@ -446,18 +459,41 @@ function cmdMcpEnv(name) {
 
 function printHelp() {
   console.log(`
-@gus/opencode-workspace — tmux workspace for OpenCode AI agents
+@gus/opencode-workspace — tmux workspace + tool-retrieval layer for OpenCode
 
-Usage: opencode-workspace [command]
-
-With no arguments, launches the OpenCode agent in a new split pane
-(auto-creates a tmux session if needed).
+Usage:
+  opencode-workspace                    Launch interactive TUI agent (tmux split)
+  opencode-workspace "<prompt>"         One-shot: retrieve tools, then run opencode
+  opencode-workspace <command> [args]
 
 Commands:
+  index                 Index all MCP server tools into the local corpus.
+                        Run this once after install, then again when servers change.
+                          --force   Re-embed all tools regardless of cache
+  retrieve <query>      Embed query and print the top-K matching tools from the corpus.
+                          --json    Emit a JSON array instead of human-readable text
+                          --k N     Override the configured retrieval.k
+  mcp-serve             Start the tool-retrieval MCP stdio server (search_tools tool).
+                        Launched automatically by OpenCode via the template config.
+  stats                 Summarise recent sessions from sessions.jsonl.
+                          --last N  Show only the last N sessions
   install               Install dependencies: uv, glab, opencode, semgrep.
-  agent                 Split a pane to the right in the current directory and run opencode.
+                        Also installs the TUI retrieval plugin to
+                        ~/.config/opencode/plugins/ow-tool-retrieval.js.
+  agent                 Split a pane to the right and run opencode (TUI).
+                        Tool retrieval fires automatically on the first message
+                        if the corpus exists (via the installed plugin).
   term                  Split a pane to the right as a plain terminal.
   mcp env VAR_NAME      Prompt for a secret and store it in ~/.local/share/opencode/mcp.env.
+
+Environment:
+  OPENCODE_WORKSPACE_RETRIEVAL=off   Disable tool retrieval entirely (pass-through to opencode).
+
+Config: ~/.config/opencode-workspace/config.json
+  {
+    "embedding": { "provider": "local", "model": "Xenova/all-MiniLM-L6-v2" },
+    "retrieval":  { "k": 10, "strategy": "topk" }
+  }
 `);
 }
 
@@ -472,16 +508,61 @@ if (command === '--help' || command === '-h') {
 
 if (!command) {
   cmdAgent();
+  // eslint-disable-next-line no-useless-return
   return;
 }
 
 switch (command) {
   case 'install': cmdInstall(); break;
-  case 'agent':   cmdAgent(); break;
-  case 'term':    cmdTerm(); break;
+  case 'agent':   cmdAgent();   break;
+  case 'term':    cmdTerm();    break;
   case 'mcp':     cmdMcp(rest.filter(a => !a.startsWith('--'))); break;
-  default:
-    process.stderr.write(`Unknown command: ${command}\n`);
-    process.stderr.write(`Run 'opencode-workspace --help' for usage.\n`);
-    process.exit(1);
+
+  case 'index': {
+    const force = rest.includes('--force');
+    const { cmdIndex } = require('../src/cmd/index.js');
+    cmdIndex({ force }).catch(e => { console.error(e.message); process.exit(1); });
+    break;
+  }
+
+  case 'retrieve': {
+    // retrieve <query> [--json] [--k N]
+    const flags   = rest.filter(a => a.startsWith('--'));
+    const queryParts = rest.filter(a => !a.startsWith('--'));
+    const query   = queryParts.join(' ').trim();
+    const json    = flags.includes('--json');
+    const kFlag   = flags.find(a => a.startsWith('--k'));
+    const k       = kFlag
+      ? parseInt(kFlag.includes('=') ? kFlag.split('=')[1] : rest[rest.indexOf(kFlag) + 1], 10)
+      : undefined;
+    const { cmdRetrieve } = require('../src/cmd/retrieve.js');
+    cmdRetrieve(query, { json, k: Number.isFinite(k) ? k : undefined })
+      .catch(e => { console.error(e.message); process.exit(1); });
+    break;
+  }
+
+  case 'mcp-serve': {
+    // Start the tool-retrieval MCP stdio server.
+    // Launched by opencode via: "command": ["opencode-workspace", "mcp-serve"]
+    require('../src/mcp/tool-retrieval-server.js');
+    break;
+  }
+
+  case 'stats': {
+    const lastFlag = rest.find(a => a.startsWith('--last'));
+    const last = lastFlag
+      ? (lastFlag.includes('=') ? lastFlag.split('=')[1] : rest[rest.indexOf(lastFlag) + 1])
+      : undefined;
+    const { cmdStats } = require('../src/cmd/stats.js');
+    cmdStats({ last }).catch(e => { console.error(e.message); process.exit(1); });
+    break;
+  }
+
+  default: {
+    // Treat the first unrecognised token + remaining args as a one-shot prompt.
+    const prompt = [command, ...rest].join(' ');
+    const { cmdOneShot } = require('../src/cmd/oneshot.js');
+    cmdOneShot(prompt).catch(e => { console.error(e.message); process.exit(1); });
+    break;
+  }
 }
