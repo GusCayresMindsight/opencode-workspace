@@ -81,7 +81,46 @@ function ensureTmux() {
   const session = 'opencode-workspace';
   spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'pipe' });
   run(['tmux', 'new-session', '-s', session, '-d']);
+  run(['tmux', 'rename-window', '-t', session, 'ow-session']);
   return session;
+}
+
+function getWindowName() {
+  return capture(['tmux', 'display-message', '-p', '#{window_name}']);
+}
+
+function isInsideOwSession() {
+  const name = getWindowName();
+  return name && /^ow-session(-\d+)?$/.test(name);
+}
+
+function getNextOwSessionName() {
+  const args = ['tmux', 'list-windows', '-F', '#{window_name}'];
+  if (!process.env.TMUX) args.push('-t', 'opencode-workspace');
+  const output = capture(args);
+  if (!output) return 'ow-session';
+
+  const existing = output.split('\n').filter(Boolean);
+  let maxIdx = 0;
+  for (const name of existing) {
+    const m = name.match(/^ow-session(?:-(\d+))?$/);
+    if (m) {
+      const idx = m[1] ? parseInt(m[1], 10) : 0;
+      if (idx >= maxIdx) maxIdx = idx;
+    }
+  }
+  return maxIdx === 0 ? 'ow-session-2' : `ow-session-${maxIdx + 1}`;
+}
+
+function rightColumnPanes() {
+  const args = ['tmux', 'list-panes', '-F', '#{pane_id} #{pane_left}'];
+  if (!process.env.TMUX) args.push('-t', 'opencode-workspace');
+  const output = capture(args);
+  if (!output) return [];
+  return output.split('\n').filter(Boolean).map(line => {
+    const [id, left] = line.trim().split(' ');
+    return { id, left: parseInt(left, 10) };
+  }).filter(p => p.left > 0);
 }
 
 function withTmux(cmd) {
@@ -216,16 +255,37 @@ function buildWelcomeScript() {
 function cmdAgent() {
   const session = ensureTmux();
 
-  // Get the left pane ID:
-  //   - If a new session was just created, use its initial pane.
-  //   - If already inside tmux, open a new window (focus switches to it; old window untouched).
-  if (!session) {
-    run(['tmux', 'new-window', '-c', CWD]);
+  if (process.env.TMUX && isInsideOwSession()) {
+    // Inside an ow-session: stack a new agent below the right column
+    const beforePanes = capture(['tmux', 'list-panes', '-F', '#{pane_id}']) || '';
+    const beforeIds = beforePanes.split('\n').filter(Boolean).map(s => s.trim());
+
+    const rightPanes = rightColumnPanes();
+    const target = rightPanes.length > 0
+      ? rightPanes[rightPanes.length - 1].id
+      : null;
+
+    const splitArgs = ['tmux', 'split-window', '-v', '-c', CWD];
+    if (target) splitArgs.push('-t', target);
+    run(splitArgs);
+
+    const afterPanes = capture(['tmux', 'list-panes', '-F', '#{pane_id}']) || '';
+    const afterIds = afterPanes.split('\n').filter(Boolean).map(s => s.trim());
+    const newPaneId = afterIds.find(id => !beforeIds.includes(id));
+
+    const agentCmd = withMcpEnv(`OPENCODE_CONFIG='${TEMPLATE}' opencode`);
+    if (newPaneId) {
+      run(['tmux', 'send-keys', '-t', newPaneId, agentCmd, 'Enter']);
+    }
+    return;
   }
 
-  // Use list-panes to reliably get the pane ID — querying after creation avoids
-  // relying on -P/-F stdout capture from new-window/split-window, which is fragile
-  // with piped stdio on some tmux versions.
+  // Not in ow-session: set up the standard two-pane layout
+  if (!session) {
+    const name = getNextOwSessionName();
+    run(['tmux', 'new-window', '-n', name, '-c', CWD]);
+  }
+
   const leftPaneTarget = session ? ['-t', session] : [];
   const leftPaneId = capture(['tmux', 'list-panes', ...leftPaneTarget, '-F', '#{pane_id}']);
 
@@ -234,10 +294,8 @@ function cmdAgent() {
     process.exit(1);
   }
 
-  // Split horizontally: right pane gets 70%, left terminal keeps 30%
   run(['tmux', 'split-window', '-h', '-l', '70%', '-t', leftPaneId, '-c', CWD]);
 
-  // Query pane IDs after the split and find the new right pane
   const panesOutput = capture(['tmux', 'list-panes', ...leftPaneTarget, '-F', '#{pane_id}']);
   const rightPaneId = (panesOutput || '')
     .split('\n')
@@ -250,20 +308,29 @@ function cmdAgent() {
     process.exit(1);
   }
 
-  // Left pane: welcome message, then interactive shell
   const welcomeScript = buildWelcomeScript();
   run(['tmux', 'send-keys', '-t', leftPaneId, `bash ${welcomeScript}`, 'Enter']);
 
-  // Right pane: OpenCode agent
   const agentCmd = withMcpEnv(`OPENCODE_CONFIG='${TEMPLATE}' opencode`);
   run(['tmux', 'send-keys', '-t', rightPaneId, agentCmd, 'Enter']);
 
-  // Attach if we created the session
   if (session) run(['tmux', 'attach', '-t', session]);
 }
 
 function cmdTerm() {
-  withTmux("");
+  const session = ensureTmux();
+
+  if (process.env.TMUX && isInsideOwSession()) {
+    withTmux("");
+    return;
+  }
+
+  if (!session) {
+    const name = getNextOwSessionName();
+    run(['tmux', 'new-window', '-n', name, '-c', CWD]);
+  }
+
+  if (session) run(['tmux', 'attach', '-t', session]);
 }
 
 function promptPassword(query) {

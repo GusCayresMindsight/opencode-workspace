@@ -38,6 +38,13 @@
       "environment": {
         "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
       }
+    },
+    "brave-search-mcp-server": {
+      "type": "local",
+      "command": ["npx", "-y", "@brave/brave-search-mcp-server", "--transport", "stdio"],
+      "environment": {
+        "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
+      }
     }
   }
 }
