@@ -23,11 +23,17 @@ const SEMGREP_TOOLS = [
   { name: 'semgrep_scan', description: 'Run a Semgrep scan on code files', inputSchema: {} },
 ];
 
+const FETCH_TOOLS = [
+  { name: 'fetch_url',  description: 'Fetch a URL and return its content as text or markdown', inputSchema: {} },
+  { name: 'fetch_html', description: 'Fetch a URL and return the raw HTML',                    inputSchema: {} },
+];
+
 const ALL_FIXTURES = {
   github:     GITHUB_TOOLS,
   notion:     NOTION_TOOLS,
   playwright: PLAYWRIGHT_TOOLS,
   semgrep:    SEMGREP_TOOLS,
+  fetch:      FETCH_TOOLS,
 };
 
 // ─── Fake vector space ────────────────────────────────────────────────────────
@@ -92,6 +98,7 @@ module.exports = {
   NOTION_TOOLS,
   PLAYWRIGHT_TOOLS,
   SEMGREP_TOOLS,
+  FETCH_TOOLS,
   ALL_FIXTURES,
   SERVER_DIM,
   vectorForServer,

@@ -188,3 +188,22 @@ This runs `opencode-workspace index`, then asserts that querying
 - `git`
 - `curl`
 - Node.js >= 18
+
+## References
+
+This implementation is based on the following work:
+
+> Lumer, E., Nizar, F., Gulati, A., Honaganahalli Basavaraju, P., & Subbiah, V. K. (2025). *Tool-to-Agent Retrieval: Bridging Tools and Agents for Scalable LLM Multi-Agent Systems.* arXiv:2511.01854. https://arxiv.org/abs/2511.01854
+
+```bibtex
+@misc{lumer2025tooltoagent,
+  title         = {Tool-to-Agent Retrieval: Bridging Tools and Agents for Scalable LLM Multi-Agent Systems},
+  author        = {Lumer, Elias and Nizar, Faheem and Gulati, Anmol and Honaganahalli Basavaraju, Pradeep and Subbiah, Vamse Kumar},
+  year          = {2025},
+  eprint        = {2511.01854},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  url           = {https://arxiv.org/abs/2511.01854}
+}
+```
+

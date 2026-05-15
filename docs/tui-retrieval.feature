@@ -35,11 +35,11 @@ Feature: TUI First-Message Retrieval Hook
     And no context injection is performed
     And the TUI session continues normally without errors
 
-  Scenario: Plugin is silent when opencode-workspace is not in PATH
-    Given opencode-workspace is not in PATH
+  Scenario: Plugin is silent when search throws an error
+    Given the tool corpus has been indexed
+    And the search function is configured to throw an error
     When the user opens an opencode TUI session and sends a first message
-    Then the retrieve subprocess call fails
-    And the plugin swallows the error silently
+    Then the plugin swallows the error silently
     And the TUI session continues normally without errors
 
   Scenario: Non-user messages do not trigger retrieval

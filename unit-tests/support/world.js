@@ -23,17 +23,21 @@ class OWWorld extends World {
     this.composeError      = false;  // force composeTempConfig to throw
 
     // ── captured by When steps ───────────────────────────────────────────────
-    this.exitCode          = null;
-    this.warnings          = [];
-    this.logs              = [];
-    this.stderrLines       = [];
-    this.spawnedCalls      = [];     // { cmd, args, env }
-    this.retrievedTools    = [];     // captured from search()
-    this.composeTempResult = null;   // { tempPath, deniedServers }
-    this.tempConfigPaths   = [];     // all /tmp/ow-* files to clean up
-    this.loadedConfig      = null;
-    this.thrownError       = null;
-    this.embeddingConfig   = null;   // set by configuration Given steps
+    this.exitCode            = null;
+    this.warnings            = [];
+    this.logs                = [];
+    this.stderrLines         = [];
+    this.spawnedCalls        = [];     // { cmd, args, env }
+    this.retrievedTools      = [];     // captured from search()
+    this.composeTempResult   = null;   // { tempPath, deniedServers }
+    this.tempConfigPaths     = [];     // all /tmp/ow-* files to clean up
+    this.loadedConfig        = null;
+    this.thrownError         = null;
+    this.embeddingConfig     = null;   // set by configuration Given steps
+    this._capturedInjections = [];     // client.session.prompt calls (tui-hook tests)
+    this._hookHandler        = null;   // reusable handler from createFirstMessageHandler
+    this._hookLastQuery      = null;   // last text passed to _searchFn in runHook
+    this._searchToolsResult  = null;   // result from runSearchTools
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
@@ -214,6 +218,85 @@ class OWWorld extends World {
     } catch (e) {
       if (e.name !== 'ExitError') throw e;
     }
+  }
+
+  /**
+   * Invoke the TUI first-message hook for a given text + sessionId.
+   *
+   * Creates (or reuses) a stateful handler from createFirstMessageHandler with:
+   *   - a mock client that captures injections into this._capturedInjections
+   *   - a proxyquire-stubbed search that uses the fake embedder
+   *
+   * Options:
+   *   reuseHandler {boolean} — if true, reuse this._hookHandler (tests dedup)
+   *   throwSearch  {boolean} — if true, _searchFn always throws (tests silent-fail)
+   */
+  async runHook(text, sessionId, opts = {}) {
+    const self       = require('proxyquire').noCallThru();
+    const proxyquire = require('proxyquire').noCallThru();
+    const fakeEmbedder = fixtures.makeFakeEmbedder();
+
+    // Stub search to use the fake embedder, and capture the query
+    const { search: realSearch } = proxyquire('../../src/retrieval/search', {
+      '../index/embedder': { createEmbedder: () => fakeEmbedder },
+    });
+
+    const _searchFn = opts.throwSearch
+      ? async () => { throw new Error('Search failed (injected error)'); }
+      : async (q, cfg, k) => {
+          this._hookLastQuery = q;
+          return realSearch(q, cfg, k);
+        };
+
+    // Mock client: capture every session.prompt call
+    const mockClient = {
+      session: {
+        prompt: async (params) => {
+          this._capturedInjections.push(params);
+        },
+      },
+    };
+
+    if (!this._hookHandler || !opts.reuseHandler) {
+      // Create a fresh handler (new seenSessions Set)
+      const { createFirstMessageHandler } = proxyquire('../../src/cmd/tui-hook', {
+        '../retrieval/search': { search: _searchFn },
+      });
+      this._hookHandler = createFirstMessageHandler({ client: mockClient, _searchFn });
+    }
+
+    // Build the message.updated event payload
+    const event = {
+      message: {
+        role:      opts.role ?? 'user',
+        sessionID: sessionId,
+        parts:     [{ type: 'text', text }],
+      },
+    };
+
+    await this._hookHandler(event);
+  }
+
+  /**
+   * Call the search_tools MCP handler directly (no real MCP server needed).
+   *
+   * Options:
+   *   k {number} — override the k parameter passed to the handler
+   */
+  async runSearchTools(query, opts = {}) {
+    const proxyquire   = require('proxyquire').noCallThru();
+    const fakeEmbedder = fixtures.makeFakeEmbedder();
+
+    const { search: realSearch } = proxyquire('../../src/retrieval/search', {
+      '../index/embedder': { createEmbedder: () => fakeEmbedder },
+    });
+
+    const { handleSearchTools } = proxyquire('../../src/mcp/search-tools-handler', {
+      '../retrieval/search': { search: realSearch },
+    });
+
+    const args = { query, ...(opts.k !== undefined ? { k: opts.k } : {}) };
+    this._searchToolsResult = await handleSearchTools(args, { _searchFn: realSearch });
   }
 }
 

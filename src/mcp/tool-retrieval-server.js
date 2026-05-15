@@ -12,48 +12,19 @@
  * Launched by opencode-workspace via:
  *   "command": ["opencode-workspace", "mcp-serve"]
  *
+ * The handler logic lives in src/mcp/search-tools-handler.js (CommonJS) and
+ * is imported here so it can be unit-tested independently of the MCP server
+ * lifecycle.
+ *
  * Intended uses:
  *   1. The agent calls search_tools proactively when it believes it could
  *      use more or different MCP capabilities than are currently active.
- *   2. The TUI first-message hook (lib/tool-retrieval.plugin.js) calls
- *      opencode-workspace retrieve to seed initial context — this server
- *      provides the same capability as an always-on MCP tool.
+ *   2. Complements the TUI first-message hook (lib/tool-retrieval.plugin.js)
+ *      by giving the agent on-demand access to the retrieval pipeline at any
+ *      point in the conversation.
  */
 
-const { loadConfig }  = require('../config');
-const { openDb }      = require('../db');
-const { getToolCount } = require('../index/corpus');
-const { search }      = require('../retrieval/search');
-
-// ─── formatting ───────────────────────────────────────────────────────────────
-
-/**
- * Format retrieved hits into a human-readable string the LLM can consume.
- *
- * @param {Array<{ server_name:string, tool_name:string, description:string, score:number }>} hits
- * @param {string} query   — echoed back so the agent sees what was searched
- * @returns {string}
- */
-function formatResults(hits, query) {
-  if (hits.length === 0) {
-    return `No tools found matching: "${query}"\n\nThe tool corpus may be empty. Run: opencode-workspace index`;
-  }
-
-  const lines = [
-    `Top ${hits.length} MCP tool${hits.length === 1 ? '' : 's'} matching: "${query}"`,
-    '',
-  ];
-
-  for (const h of hits) {
-    lines.push(`${h.server_name} / ${h.tool_name}  (relevance: ${h.score.toFixed(3)})`);
-    lines.push(`  ${h.description}`);
-    lines.push('');
-  }
-
-  return lines.join('\n');
-}
-
-// ─── server bootstrap ─────────────────────────────────────────────────────────
+const { handleSearchTools } = require('./search-tools-handler');
 
 async function startServer() {
   const { Server }               = await import('@modelcontextprotocol/sdk/server/index.js');
@@ -64,7 +35,7 @@ async function startServer() {
     { capabilities: { tools: {} } },
   );
 
-  // ── tool: search_tools ────────────────────────────────────────────────────
+  // ── tool list ─────────────────────────────────────────────────────────────
   server.setRequestHandler(
     { method: 'tools/list' },
     async () => ({
@@ -98,6 +69,7 @@ async function startServer() {
     }),
   );
 
+  // ── tool call ─────────────────────────────────────────────────────────────
   server.setRequestHandler(
     { method: 'tools/call' },
     async (request) => {
@@ -110,49 +82,7 @@ async function startServer() {
         };
       }
 
-      const query = args?.query;
-      if (!query || typeof query !== 'string' || !query.trim()) {
-        return {
-          content: [{ type: 'text', text: 'search_tools: "query" argument is required and must be a non-empty string.' }],
-          isError: true,
-        };
-      }
-
-      const config = loadConfig();
-      const k = (typeof args?.k === 'number' && args.k > 0) ? Math.floor(args.k) : (config.retrieval?.k ?? 10);
-
-      // Corpus availability check
-      let corpusSize = 0;
-      try {
-        const { db } = openDb();
-        corpusSize   = getToolCount(db);
-      } catch { /* DB not yet created */ }
-
-      if (corpusSize === 0) {
-        return {
-          content: [{
-            type: 'text',
-            text: 'The tool corpus is empty. Run `opencode-workspace index` to build it before searching.',
-          }],
-          isError: false,
-        };
-      }
-
-      // Run retrieval
-      let hits;
-      try {
-        hits = await search(query.trim(), config, k);
-      } catch (err) {
-        return {
-          content: [{ type: 'text', text: `search_tools failed: ${err.message}` }],
-          isError: true,
-        };
-      }
-
-      return {
-        content: [{ type: 'text', text: formatResults(hits, query.trim()) }],
-        isError: false,
-      };
+      return handleSearchTools(args);
     },
   );
 
@@ -160,7 +90,6 @@ async function startServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // Keep the process alive — the server exits when stdin closes (opencode disconnects)
   process.on('SIGTERM', () => server.close());
   process.on('SIGINT',  () => server.close());
 }
