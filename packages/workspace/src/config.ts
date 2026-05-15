@@ -48,6 +48,23 @@ function deepMerge<T extends object>(base: T, override: Partial<T>): T {
   return result
 }
 
+/**
+ * Load config from an explicit file path.
+ * Use this in tests to point at a temp file instead of ~/.config/ow/config.json.
+ */
+export function loadConfigFromFile(filePath: string): WorkspaceConfig {
+  if (!fs.existsSync(filePath)) return structuredClone(DEFAULTS)
+  let raw: unknown
+  try {
+    raw = JSON.parse(fs.readFileSync(filePath, "utf8"))
+  } catch (e: any) {
+    process.stderr.write(`ow: could not parse ${filePath}: ${e.message}\n`)
+    process.stderr.write(`ow: using defaults\n`)
+    return structuredClone(DEFAULTS)
+  }
+  return deepMerge(DEFAULTS, raw as Partial<WorkspaceConfig>)
+}
+
 export function loadConfig(): WorkspaceConfig {
   if (!fs.existsSync(CONFIG_FILE)) return structuredClone(DEFAULTS)
   let raw: unknown

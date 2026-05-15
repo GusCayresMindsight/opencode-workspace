@@ -62,3 +62,14 @@ export function openDb(): { db: Database; hasVec: false } {
 export function dbPath(): string {
   return DB_PATH
 }
+
+/**
+ * Create an isolated in-memory database with all migrations applied.
+ * Use this in tests — never touches the filesystem.
+ */
+export function createTestDb(): { db: Database; hasVec: false } {
+  const db = new Database(":memory:")
+  db.exec("PRAGMA foreign_keys = ON")
+  runMigrations(db)
+  return { db, hasVec: false }
+}

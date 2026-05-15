@@ -1,13 +1,13 @@
 import { loadConfig } from "../config"
 import { openDb } from "../db"
 import { getToolCount } from "../corpus"
-import { search } from "../search"
+import { search, type SearchHit } from "../search"
 
 // ─── formatting ───────────────────────────────────────────────────────────────
 
-function formatResults(hits: Awaited<ReturnType<typeof search>>, query: string): string {
+export function formatResults(hits: SearchHit[], query: string): string {
   if (hits.length === 0) {
-    return `No tools found matching: "${query}"\n\nThe tool corpus may be empty. Run: ow index`
+    return `No tools found matching: "${query}"\n\nThe tool corpus may be empty. Run: ow corpus index`
   }
 
   const lines = [`Top ${hits.length} MCP tool${hits.length === 1 ? "" : "s"} matching: "${query}"`, ""]
@@ -19,6 +19,61 @@ function formatResults(hits: Awaited<ReturnType<typeof search>>, query: string):
   }
 
   return lines.join("\n")
+}
+
+// ─── handler (extracted for testability) ─────────────────────────────────────
+
+export interface McpToolResult {
+  content: Array<{ type: string; text: string }>
+  isError: boolean
+}
+
+/**
+ * Core logic for the search_tools MCP tool call.
+ * Extracted from the server so it can be tested without a real MCP transport.
+ */
+export async function handleSearchTools(
+  args: { query?: string; k?: number },
+  opts: { _searchFn?: typeof search; _corpusSizeFn?: () => number } = {},
+): Promise<McpToolResult> {
+  const searchFn = opts._searchFn ?? search
+  const { query, k: kArg } = args ?? {}
+
+  if (!query?.trim()) {
+    return {
+      content: [{ type: "text", text: 'search_tools: "query" argument is required.' }],
+      isError: true,
+    }
+  }
+
+  const config = loadConfig()
+  const k = typeof kArg === "number" && kArg > 0 ? Math.floor(kArg) : (config.retrieval?.k ?? 10)
+
+  const corpusSize = opts._corpusSizeFn
+    ? opts._corpusSizeFn()
+    : (() => { try { const { db } = openDb(); return getToolCount(db) } catch { return 0 } })()
+
+  if (corpusSize === 0) {
+    return {
+      content: [{ type: "text", text: "The tool corpus is empty. Run `ow corpus index` to build it." }],
+      isError: false,
+    }
+  }
+
+  let hits: SearchHit[]
+  try {
+    hits = await searchFn(query.trim(), config, k)
+  } catch (err: any) {
+    return {
+      content: [{ type: "text", text: `search_tools failed: ${err.message}` }],
+      isError: true,
+    }
+  }
+
+  return {
+    content: [{ type: "text", text: formatResults(hits, query.trim()) }],
+    isError: false,
+  }
 }
 
 // ─── MCP server ───────────────────────────────────────────────────────────────
@@ -66,45 +121,7 @@ export async function startMcpServer(): Promise<void> {
       }
     }
 
-    const { query, k: kArg } = (args ?? {}) as { query?: string; k?: number }
-
-    if (!query?.trim()) {
-      return {
-        content: [{ type: "text", text: 'search_tools: "query" argument is required.' }],
-        isError: true,
-      }
-    }
-
-    const config = loadConfig()
-    const k = typeof kArg === "number" && kArg > 0 ? Math.floor(kArg) : (config.retrieval?.k ?? 10)
-
-    let corpusSize = 0
-    try {
-      const { db } = openDb()
-      corpusSize = getToolCount(db)
-    } catch {}
-
-    if (corpusSize === 0) {
-      return {
-        content: [{ type: "text", text: "The tool corpus is empty. Run `ow index` to build it." }],
-        isError: false,
-      }
-    }
-
-    let hits: Awaited<ReturnType<typeof search>>
-    try {
-      hits = await search(query.trim(), config, k)
-    } catch (err: any) {
-      return {
-        content: [{ type: "text", text: `search_tools failed: ${err.message}` }],
-        isError: true,
-      }
-    }
-
-    return {
-      content: [{ type: "text", text: formatResults(hits, query.trim()) }],
-      isError: false,
-    }
+    return handleSearchTools((args ?? {}) as { query?: string; k?: number })
   })
 
   const transport = new StdioServerTransport()

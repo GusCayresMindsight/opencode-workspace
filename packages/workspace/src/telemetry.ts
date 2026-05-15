@@ -27,17 +27,23 @@ export interface Stats {
 
 // ─── write ────────────────────────────────────────────────────────────────────
 
-export function appendSession(data: SessionRecord): void {
-  fs.mkdirSync(CONFIG_DIR, { recursive: true })
+/** Write a session record to an explicit file path. Use this in tests. */
+export function appendSessionToFile(filePath: string, data: SessionRecord): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
   const line = JSON.stringify(data) + "\n"
-  fs.appendFileSync(SESSIONS_FILE, line, "utf8")
+  fs.appendFileSync(filePath, line, "utf8")
+}
+
+export function appendSession(data: SessionRecord): void {
+  appendSessionToFile(SESSIONS_FILE, data)
 }
 
 // ─── read ─────────────────────────────────────────────────────────────────────
 
-export function readSessions(last: number = Infinity): SessionRecord[] {
-  if (!fs.existsSync(SESSIONS_FILE)) return []
-  const lines = fs.readFileSync(SESSIONS_FILE, "utf8").split("\n")
+/** Read sessions from an explicit file path. Use this in tests. */
+export function readSessionsFromFile(filePath: string, last: number = Infinity): SessionRecord[] {
+  if (!fs.existsSync(filePath)) return []
+  const lines = fs.readFileSync(filePath, "utf8").split("\n")
   const parsed: SessionRecord[] = []
   for (const line of lines) {
     if (!line.trim()) continue
@@ -47,6 +53,10 @@ export function readSessions(last: number = Infinity): SessionRecord[] {
   }
   if (last === Infinity || last >= parsed.length) return parsed
   return parsed.slice(-last)
+}
+
+export function readSessions(last: number = Infinity): SessionRecord[] {
+  return readSessionsFromFile(SESSIONS_FILE, last)
 }
 
 // ─── compute stats ────────────────────────────────────────────────────────────

@@ -6,14 +6,19 @@ const MCP_ENV_PATH = path.join(os.homedir(), ".local", "share", "opencode", "mcp
 
 // ─── env helpers ──────────────────────────────────────────────────────────────
 
-export function loadMcpEnv(): Record<string, string> {
+/** Parse KEY=value pairs from an explicit file path. Use this in tests. */
+export function loadMcpEnvFromFile(filePath: string): Record<string, string> {
   const env: Record<string, string> = {}
-  if (!fs.existsSync(MCP_ENV_PATH)) return env
-  for (const line of fs.readFileSync(MCP_ENV_PATH, "utf8").split("\n")) {
+  if (!fs.existsSync(filePath)) return env
+  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
     const eq = line.indexOf("=")
     if (eq > 0) env[line.slice(0, eq)] = line.slice(eq + 1)
   }
   return env
+}
+
+export function loadMcpEnv(): Record<string, string> {
+  return loadMcpEnvFromFile(MCP_ENV_PATH)
 }
 
 function resolveEnvVars(value: string, mcpEnv: Record<string, string>): string {

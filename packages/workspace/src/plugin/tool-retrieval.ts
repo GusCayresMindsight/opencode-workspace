@@ -33,21 +33,21 @@ export async function handleFirstMessage({
   sessionId,
   client,
   _searchFn,
+  _corpusSizeFn,
 }: {
   text: string
   sessionId: string
   client: any
   _searchFn?: typeof search
+  _corpusSizeFn?: () => number
 }): Promise<{ injected: boolean; hitCount?: number; reason?: string }> {
   const searchFn = _searchFn ?? search
   const config = loadConfig()
   const k = config.retrieval?.k ?? 10
 
-  let corpusSize = 0
-  try {
-    const { db } = openDb()
-    corpusSize = getToolCount(db)
-  } catch {}
+  const corpusSize = _corpusSizeFn
+    ? _corpusSizeFn()
+    : (() => { try { const { db } = openDb(); return getToolCount(db) } catch { return 0 } })()
 
   if (corpusSize === 0) return { injected: false, reason: "empty corpus" }
 

@@ -20,7 +20,7 @@ function cosineSim(a: number[], b: number[]): number {
 
 // ─── search implementations ───────────────────────────────────────────────────
 
-function bruteForceSearch(
+export function bruteForceSearch(
   db: import("bun:sqlite").Database,
   queryVec: number[],
   k: number,

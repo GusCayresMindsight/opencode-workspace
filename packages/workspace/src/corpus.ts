@@ -2,15 +2,20 @@ import type { Database } from "bun:sqlite"
 
 // ─── float32 helpers ──────────────────────────────────────────────────────────
 
-export function packF32(arr: number[]): Buffer {
-  const buf = Buffer.allocUnsafe(arr.length * 4)
-  for (let i = 0; i < arr.length; i++) buf.writeFloatLE(arr[i]!, i * 4)
-  return buf
+export function packF32(arr: number[]): Uint8Array {
+  const ab = new ArrayBuffer(arr.length * 4)
+  const view = new DataView(ab)
+  for (let i = 0; i < arr.length; i++) view.setFloat32(i * 4, arr[i]!, true)
+  return new Uint8Array(ab)
 }
 
-export function unpackF32(buf: Buffer): number[] {
-  const arr: number[] = new Array(buf.length / 4)
-  for (let i = 0; i < arr.length; i++) arr[i] = buf.readFloatLE(i * 4)
+export function unpackF32(buf: Uint8Array | ArrayBuffer): number[] {
+  const ab = buf instanceof Uint8Array ? buf.buffer : buf
+  const offset = buf instanceof Uint8Array ? buf.byteOffset : 0
+  const len = (buf instanceof Uint8Array ? buf.byteLength : (buf as ArrayBuffer).byteLength) / 4
+  const view = new DataView(ab, offset, len * 4)
+  const arr: number[] = new Array(len)
+  for (let i = 0; i < len; i++) arr[i] = view.getFloat32(i * 4, true)
   return arr
 }
 
