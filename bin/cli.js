@@ -10,6 +10,9 @@ const readline = require('readline');
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEMPLATE        = path.join(__dirname, '..', 'lib', 'opencode.json.template');
+const PLUGIN_SRC      = path.join(__dirname, '..', 'lib', 'tool-retrieval.plugin.js');
+const PLUGIN_DEST_DIR = path.join(os.homedir(), '.config', 'opencode', 'plugins');
+const PLUGIN_DEST     = path.join(PLUGIN_DEST_DIR, 'ow-tool-retrieval.js');
 const HOME            = os.homedir();
 const MCP_ENV         = path.join(HOME, '.local', 'share', 'opencode', 'mcp.env');
 const CWD             = process.cwd();
@@ -218,6 +221,14 @@ function cmdInstall() {
   } else {
     console.log(`semgrep already installed: ${capture(['semgrep', '--version'])}`);
   }
+
+  // opencode-workspace TUI plugin
+  console.log('Installing TUI retrieval plugin...');
+  tryStep('ow-tool-retrieval plugin', () => {
+    fs.mkdirSync(PLUGIN_DEST_DIR, { recursive: true });
+    fs.copyFileSync(PLUGIN_SRC, PLUGIN_DEST);
+    console.log(`  → ${PLUGIN_DEST}`);
+  });
 
   console.log('');
   console.log('All dependencies installed.');
@@ -459,10 +470,19 @@ Commands:
   index                 Index all MCP server tools into the local corpus.
                         Run this once after install, then again when servers change.
                           --force   Re-embed all tools regardless of cache
+  retrieve <query>      Embed query and print the top-K matching tools from the corpus.
+                          --json    Emit a JSON array instead of human-readable text
+                          --k N     Override the configured retrieval.k
+  mcp-serve             Start the tool-retrieval MCP stdio server (search_tools tool).
+                        Launched automatically by OpenCode via the template config.
   stats                 Summarise recent sessions from sessions.jsonl.
                           --last N  Show only the last N sessions
   install               Install dependencies: uv, glab, opencode, semgrep.
-  agent                 Split a pane to the right and run opencode (TUI, no retrieval).
+                        Also installs the TUI retrieval plugin to
+                        ~/.config/opencode/plugins/ow-tool-retrieval.js.
+  agent                 Split a pane to the right and run opencode (TUI).
+                        Tool retrieval fires automatically on the first message
+                        if the corpus exists (via the installed plugin).
   term                  Split a pane to the right as a plain terminal.
   mcp env VAR_NAME      Prompt for a secret and store it in ~/.local/share/opencode/mcp.env.
 
@@ -502,6 +522,29 @@ switch (command) {
     const force = rest.includes('--force');
     const { cmdIndex } = require('../src/cmd/index.js');
     cmdIndex({ force }).catch(e => { console.error(e.message); process.exit(1); });
+    break;
+  }
+
+  case 'retrieve': {
+    // retrieve <query> [--json] [--k N]
+    const flags   = rest.filter(a => a.startsWith('--'));
+    const queryParts = rest.filter(a => !a.startsWith('--'));
+    const query   = queryParts.join(' ').trim();
+    const json    = flags.includes('--json');
+    const kFlag   = flags.find(a => a.startsWith('--k'));
+    const k       = kFlag
+      ? parseInt(kFlag.includes('=') ? kFlag.split('=')[1] : rest[rest.indexOf(kFlag) + 1], 10)
+      : undefined;
+    const { cmdRetrieve } = require('../src/cmd/retrieve.js');
+    cmdRetrieve(query, { json, k: Number.isFinite(k) ? k : undefined })
+      .catch(e => { console.error(e.message); process.exit(1); });
+    break;
+  }
+
+  case 'mcp-serve': {
+    // Start the tool-retrieval MCP stdio server.
+    // Launched by opencode via: "command": ["opencode-workspace", "mcp-serve"]
+    require('../src/mcp/tool-retrieval-server.js');
     break;
   }
 

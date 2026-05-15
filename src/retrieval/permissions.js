@@ -1,11 +1,21 @@
 'use strict';
 
 /**
+ * Servers that must never be denied, regardless of retrieval results.
+ *
+ * tool-retrieval: the on-demand search_tools MCP server.  It must always be
+ * accessible so the agent can proactively discover relevant tools at any point
+ * in the conversation, including in sessions where it was not in the top-K.
+ */
+const ALWAYS_ALLOWED = new Set(['tool-retrieval']);
+
+/**
  * Generate OpenCode permission deny-rules for servers that have NO tools in the
  * retrieved set.
  *
  * Strategy: server-level filtering only.
  *   • If a server has ≥1 retrieved tool  → leave all its tools open (no rule)
+ *   • If a server is in ALWAYS_ALLOWED   → never deny, even if not retrieved
  *   • If a server has 0 retrieved tools  → add "mcp_<server>_*": "deny"
  *
  * We ONLY emit deny rules, never allow rules.  This means:
@@ -24,6 +34,9 @@ function generatePermissions(allServers, retrievedServers, existingPermissions =
 
   for (const server of allServers) {
     if (retrieved.has(server)) continue;
+
+    // Some servers must remain accessible regardless of retrieval results
+    if (ALWAYS_ALLOWED.has(server)) continue;
 
     const key = `mcp_${server}_*`;
 
@@ -48,4 +61,4 @@ function retrievedServers(hits) {
   return [...new Set(hits.map(h => h.server_name))];
 }
 
-module.exports = { generatePermissions, retrievedServers };
+module.exports = { generatePermissions, retrievedServers, ALWAYS_ALLOWED };

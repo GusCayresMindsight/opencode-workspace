@@ -48,7 +48,8 @@ Given('one MCP server is unreachable or misconfigured', function () {
 Given('no MCP server can be reached', function () {
   // Override ALL known servers to throw
   const allServers = ['github', 'notion', 'playwright', 'gitlab', 'fetch',
-    'semgrep', 'aws-knowledge', 'sequential-thinking', 'brave-search-mcp-server'];
+    'semgrep', 'aws-knowledge', 'sequential-thinking', 'brave-search-mcp-server',
+    'tool-retrieval'];
   for (const s of allServers) {
     this.serverOverrides[s] = new Error('Connection refused');
   }
