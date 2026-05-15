@@ -38,6 +38,9 @@ class OWWorld extends World {
     this._hookHandler        = null;   // reusable handler from createFirstMessageHandler
     this._hookLastQuery      = null;   // last text passed to _searchFn in runHook
     this._searchToolsResult  = null;   // result from runSearchTools
+    this._serverCalls        = null;   // setRequestHandler calls captured by runStartServer
+    this._wireToolsList      = null;   // listTools() result from runWireListTools
+    this._wireCallResult     = null;   // callTool() result from runWireCallTool
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
@@ -298,7 +301,96 @@ class OWWorld extends World {
     const args = { query, ...(opts.k !== undefined ? { k: opts.k } : {}) };
     this._searchToolsResult = await handleSearchTools(args, { _searchFn: realSearch });
   }
-}
+
+  /**
+   * Invoke createMcpServer() with a mock SDK to validate request-handler
+   * registration without connecting a real stdio transport.
+   *
+   * The mock Server records every setRequestHandler() call so that Then steps
+   * can assert that proper Zod schemas — not plain objects — were passed.
+   * Captures results in this._serverCalls = [{ schema, handler }, ...].
+   */
+  async runStartServer() {
+    const { ListToolsRequestSchema, CallToolRequestSchema } =
+      await import('@modelcontextprotocol/sdk/types.js');
+
+    const calls = [];
+
+    class MockServer {
+      constructor() {}
+      setRequestHandler(schema, handler) {
+        calls.push({ schema, handler });
+      }
+    }
+
+    const { createMcpServer } = require('../../src/mcp/tool-retrieval-server');
+    createMcpServer({ Server: MockServer, ListToolsRequestSchema, CallToolRequestSchema });
+
+    this._serverCalls = calls;
+  }
+
+  /**
+   * Run a full wire-protocol tools/list round-trip using InMemoryTransport.
+   *
+   * Creates a real MCP Server (via createMcpServer) and a real Client, links
+   * them in-process, then calls client.listTools().  No stdio, no subprocess.
+   * Result stored in this._wireToolsList.
+   */
+  async runWireListTools() {
+    const { Server }  = await import('@modelcontextprotocol/sdk/server/index.js');
+    const { Client }  = await import('@modelcontextprotocol/sdk/client/index.js');
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const { ListToolsRequestSchema, CallToolRequestSchema } =
+      await import('@modelcontextprotocol/sdk/types.js');
+
+    const { createMcpServer } = require('../../src/mcp/tool-retrieval-server');
+    const server = createMcpServer({ Server, ListToolsRequestSchema, CallToolRequestSchema });
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    await client.connect(clientTransport);
+    try {
+      this._wireToolsList = await client.listTools();
+    } finally {
+      await client.close();
+    }
+  }
+
+  /**
+   * Run a full wire-protocol tools/call round-trip using InMemoryTransport.
+   *
+   * Intentionally uses an empty corpus so handleSearchTools() returns its
+   * graceful "corpus is empty" response without invoking the embedder.
+   * This makes the test self-contained and fast.
+   * Result stored in this._wireCallResult.
+   *
+   * @param {string} toolName  - tool to call (e.g. 'search_tools')
+   * @param {object} args      - arguments to pass to the tool
+   */
+  async runWireCallTool(toolName, args) {
+    const { Server }  = await import('@modelcontextprotocol/sdk/server/index.js');
+    const { Client }  = await import('@modelcontextprotocol/sdk/client/index.js');
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const { ListToolsRequestSchema, CallToolRequestSchema } =
+      await import('@modelcontextprotocol/sdk/types.js');
+
+    const { createMcpServer } = require('../../src/mcp/tool-retrieval-server');
+    const server = createMcpServer({ Server, ListToolsRequestSchema, CallToolRequestSchema });
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    await client.connect(clientTransport);
+    try {
+      this._wireCallResult = await client.callTool({ name: toolName, arguments: args });
+    } finally {
+      await client.close();
+    }
+  }
+}  // end OWWorld
 
 // ── Expose ExitError as a global so step files can catch it ──────────────────
 

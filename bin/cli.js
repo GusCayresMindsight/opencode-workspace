@@ -544,7 +544,11 @@ switch (command) {
   case 'mcp-serve': {
     // Start the tool-retrieval MCP stdio server.
     // Launched by opencode via: "command": ["opencode-workspace", "mcp-serve"]
-    require('../src/mcp/tool-retrieval-server.js');
+    const { startServer } = require('../src/mcp/tool-retrieval-server.js');
+    startServer().catch(err => {
+      process.stderr.write(`tool-retrieval-server: fatal error: ${err.message}\n`);
+      process.exit(1);
+    });
     break;
   }
 
