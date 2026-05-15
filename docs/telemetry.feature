@@ -7,8 +7,7 @@ Feature: Session Telemetry
     Given the tool corpus has been indexed
     When the user runs 'opencode-workspace "some prompt"'
     Then a new line is appended to ~/.config/opencode-workspace/sessions.jsonl
-    And the record contains: ts (ISO 8601 timestamp), session_id (UUID), prompt,
-      retrieved_tools (list of {server, tool, score}), corpus_size, embedding_model, and k
+    And the record contains the fields: ts, session_id, prompt, retrieved_tools with scores, corpus_size, embedding_model, and k
 
   Scenario: sessions.jsonl is valid JSONL after every run
     Given sessions.jsonl contains existing records

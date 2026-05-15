@@ -7,7 +7,7 @@ Feature: MCP Tool Corpus Indexing
     Given the tool corpus does not exist
     When the user runs "opencode-workspace index"
     Then the command connects to each configured MCP server
-    And embeds the text "<server> / <tool>: <description>" for each tool
+    And embeds the text "server / tool_name: description" for each tool
     And stores each tool's name, description, input schema, schema hash, and embedding in the corpus
     And prints the count of newly embedded tools per server
     And exits with code 0

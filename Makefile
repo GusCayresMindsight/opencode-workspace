@@ -6,15 +6,12 @@
 
 .PHONY: install test smoke update
 
+
 install:
 	npm install -g .
 
 test:
-	@echo "--- help ---"
-	opencode-workspace --help
-	@echo "--- OPENCODE_WORKSPACE_RETRIEVAL=off passes through (no retrieval output) ---"
-	OPENCODE_WORKSPACE_RETRIEVAL=off opencode-workspace --help >/dev/null
-	@echo "All checks passed."
+	npx cucumber-js
 
 smoke:
 	@echo "=== Step 1: index MCP tool corpus ==="
